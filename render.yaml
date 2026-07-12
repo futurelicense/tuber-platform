@@ -5,7 +5,10 @@ services:
     dockerfilePath: ./Dockerfile
     plan: standard # always-on — both vendored apps hold job state in-process; free-tier
                    # idle spin-down would silently kill in-flight clip cuts / video assembly
+    preDeployCommand: "flask db upgrade" # applies migrations before the new instance takes traffic
     envVars:
+      - key: FLASK_APP
+        value: wsgi:platform_app
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
