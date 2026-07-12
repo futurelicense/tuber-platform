@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Tuber Platform{% endblock %}
+{% block content %}
+<div class="grid" style="margin-bottom:18px">
+  <div class="stat"><div class="n">{{ user_count }}</div><div class="l">Total tubers</div></div>
+  <div class="stat"><div class="n">{{ clipper_count }}</div><div class="l">Clippers</div></div>
+  <div class="stat"><div class="n">{{ producer_count }}</div><div class="l">Producers</div></div>
+</div>
+
+<div class="card">
+  <h2>Recent activity</h2>
+  <table>
+    <tr><th>User</th><th>Action</th><th>Route</th><th>Status</th><th>When</th></tr>
+    {% for a in recent_activity %}
+    <tr>
+      <td>{{ a.user.email if a.user else a.user_id }}</td>
+      <td>{{ a.action }}</td>
+      <td>{{ a.route }}</td>
+      <td>{{ a.status_code or '—' }}</td>
+      <td>{{ a.created_at.strftime('%Y-%m-%d %H:%M') if a.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No activity yet.</td></tr>
+    {% endfor %}
+  </table>
+  <div style="margin-top:12px"><a href="{{ url_for('admin.activity') }}">View all activity &rarr;</a></div>
+</div>
+
+<div class="card">
+  <h2>Recent logins</h2>
+  <table>
+    <tr><th>User</th><th>IP</th><th>Location</th><th>Success</th><th>When</th></tr>
+    {% for e in recent_logins %}
+    <tr>
+      <td>{{ e.user.email if e.user else e.user_id }}</td>
+      <td>{{ e.ip_address }}</td>
+      <td>{{ [e.geo_city, e.geo_region, e.geo_country] | select | join(', ') or '—' }}</td>
+      <td>{{ '✓' if e.success else '✗' }}</td>
+      <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No logins yet.</td></tr>
+    {% endfor %}
+  </table>
+  <div style="margin-top:12px"><a href="{{ url_for('admin.logins') }}">View all logins &rarr;</a></div>
+</div>
+{% endblock %}

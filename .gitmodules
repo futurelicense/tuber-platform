@@ -1,0 +1,6 @@
+[submodule "vendor/youtube-clipper"]
+	path = vendor/youtube-clipper
+	url = /home/emc2/Developer/Youtube-Clipper
+[submodule "vendor/ytproduction"]
+	path = vendor/ytproduction
+	url = /home/emc2/Developer/ytproduction

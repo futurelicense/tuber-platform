@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: tuber-platform
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard # always-on — both vendored apps hold job state in-process; free-tier
+                   # idle spin-down would silently kill in-flight clip cuts / video assembly
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tuber-platform-db
+          property: connectionString
+      - key: PUBLIC_BASE_URL
+        sync: false # e.g. https://tuber-platform.onrender.com — no trailing slash
+      - key: GEO_API_URL
+        value: http://ip-api.com/json
+      - key: CHANNEL_TOKEN_ENC_KEY
+        generateValue: true
+      - key: CLIPPER_DOWNLOAD_DIR
+        value: /app/data/clips
+      - key: YTPROD_OUTPUT_DIR
+        value: /app/data/output
+      - key: AI_KEY
+        sync: false
+      - key: AI_MODEL
+        value: llama-3.3-70b-versatile
+      - key: AI_ENDPOINT
+        value: https://api.groq.com/openai/v1/chat/completions
+      - key: HF_API_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+    disk:
+      name: media-storage
+      mountPath: /app/data
+      sizeGB: 10
+    healthCheckPath: /healthz
+
+databases:
+  - name: tuber-platform-db
+    plan: starter
+    databaseName: tuber_platform
+    user: tuber_platform

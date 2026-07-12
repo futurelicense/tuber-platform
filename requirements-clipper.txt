@@ -1,0 +1,8 @@
+# Pinned from vendor/youtube-clipper's own venv (`pip freeze`), plus the
+# Google API libs it imports conditionally (try/except) — not installed in
+# the source venv today, so Drive/YouTube upload silently no-ops there. They
+# ARE required for real Drive/YouTube upload to work once deployed.
+yt-dlp==2026.6.9
+google-api-python-client>=2.140
+google-auth-oauthlib>=1.2
+google-auth>=2.34

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Log in — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card" style="max-width:380px;margin:60px auto">
+  <h2>Log in</h2>
+  <form method="post">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit" style="width:100%">Log in</button>
+  </form>
+  <div class="hint" style="margin-top:14px">No public signup — ask your admin for an account.</div>
+</div>
+{% endblock %}

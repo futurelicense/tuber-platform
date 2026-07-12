@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Rewards — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Metrics</h2>
+  <p class="hint">Named, typed slots for measuring tuber performance. Real values feed in later —
+    for now this is just the definition CRUD.</p>
+  <table style="margin-bottom:18px">
+    <tr><th>Key</th><th>Label</th><th>Type</th><th>Role</th><th>Active</th></tr>
+    {% for m in metrics %}
+    <tr>
+      <td>{{ m.key }}</td>
+      <td>{{ m.label }}</td>
+      <td>{{ m.data_type }}</td>
+      <td>{{ m.applies_to_role or 'both' }}</td>
+      <td>{{ '✓' if m.is_active else '✗' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No metrics defined yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('admin.new_metric') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:1;min-width:140px"><label for="key">Key</label><input id="key" name="key" placeholder="clips_published" required></div>
+    <div style="flex:1;min-width:140px"><label for="label">Label</label><input id="label" name="label" placeholder="Clips published" required></div>
+    <div style="min-width:140px">
+      <label for="data_type">Type</label>
+      <select id="data_type" name="data_type">
+        <option value="integer">integer</option>
+        <option value="float">float</option>
+        <option value="boolean">boolean</option>
+        <option value="duration_seconds">duration_seconds</option>
+      </select>
+    </div>
+    <div style="min-width:140px">
+      <label for="applies_to_role">Applies to</label>
+      <select id="applies_to_role" name="applies_to_role">
+        <option value="">Both</option>
+        <option value="clipper">Clipper</option>
+        <option value="producer">Producer</option>
+      </select>
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Add metric</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Reward rules</h2>
+  <p class="hint">CRUD only — no automatic evaluation yet, this is the framework admins configure.</p>
+  <table style="margin-bottom:18px">
+    <tr><th>Name</th><th>Metric</th><th>Condition</th><th>Reward</th><th>Role</th></tr>
+    {% for r in rules %}
+    <tr>
+      <td>{{ r.name }}</td>
+      <td>{{ r.metric.label if r.metric else r.metric_id }}</td>
+      <td>
+        {% if r.operator == 'between' %}between {{ r.threshold_low }} and {{ r.threshold_high }}
+        {% elif r.operator == 'gte' %}&ge; {{ r.threshold_low }}
+        {% elif r.operator == 'lte' %}&le; {{ r.threshold_low }}
+        {% else %}= {{ r.threshold_low }}{% endif %}
+      </td>
+      <td>{{ r.reward_description or '—' }}</td>
+      <td>{{ r.applies_to_role or 'both' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No reward rules defined yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('admin.new_rule') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:1;min-width:140px"><label for="name">Name</label><input id="name" name="name" placeholder="Top clipper bonus" required></div>
+    <div style="min-width:160px">
+      <label for="metric_id">Metric</label>
+      <select id="metric_id" name="metric_id" required>
+        {% for m in metrics %}
+        <option value="{{ m.id }}">{{ m.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="min-width:110px">
+      <label for="operator">Operator</label>
+      <select id="operator" name="operator">
+        <option value="gte">&ge;</option>
+        <option value="lte">&le;</option>
+        <option value="eq">=</option>
+        <option value="between">between</option>
+      </select>
+    </div>
+    <div style="min-width:100px"><label for="threshold_low">Low</label><input id="threshold_low" name="threshold_low" type="number" step="any"></div>
+    <div style="min-width:100px"><label for="threshold_high">High</label><input id="threshold_high" name="threshold_high" type="number" step="any"></div>
+    <div style="flex:1;min-width:160px"><label for="reward_description">Reward</label><input id="reward_description" name="reward_description" placeholder="$50 bonus"></div>
+    <div style="min-width:140px">
+      <label for="rule_role">Applies to</label>
+      <select id="rule_role" name="applies_to_role">
+        <option value="">Both</option>
+        <option value="clipper">Clipper</option>
+        <option value="producer">Producer</option>
+      </select>
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Add rule</button></div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Tuber Platform{% endblock %}</title>
+<style>
+  :root{
+    --ink:#14161b;--panel:#1b1e25;--panel-2:#22262f;
+    --line:#2c3039;--line-bright:#3a3f4a;
+    --text:#e9e7e1;--muted:#8b909c;--faint:#5d626d;
+    --amber:#ffb13c;--in:#56d364;--out:#f76d6d;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);
+    font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+  a{color:var(--amber);text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{display:flex;align-items:center;gap:20px;padding:14px 24px;
+    border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  nav.top a{color:var(--muted);font-size:13px;font-weight:600;padding:6px 10px;
+    border-radius:8px}
+  nav.top a.active,nav.top a:hover{color:var(--amber);background:rgba(255,177,60,.1);
+    text-decoration:none}
+  .spacer{flex:1}
+  .whoami{font-size:12px;color:var(--faint)}
+  main{max-width:1100px;margin:0 auto;padding:28px 24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+  .stat{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+    padding:16px}
+  .stat .n{font-size:26px;font-weight:700}
+  .stat .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;
+    font-weight:600;border:1px solid var(--line-bright)}
+  .pill.admin{color:#bc8cff;border-color:#5c3a8a}
+  .pill.clipper{color:var(--amber);border-color:#7a5a22}
+  .pill.producer{color:#4a9eff;border-color:#1e3a5c}
+  .pill.ok{color:var(--in);border-color:#2a6a3a}
+  .pill.off{color:var(--faint)}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
+  input,select,textarea{width:100%;background:var(--ink);border:1px solid var(--line-bright);
+    color:var(--text);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;
+    outline:none;margin-bottom:14px}
+  input:focus,select:focus,textarea:focus{border-color:var(--amber)}
+  button{background:var(--amber);color:#1a1205;border:none;border-radius:8px;
+    padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  button.secondary{background:none;border:1px solid var(--line-bright);color:var(--muted)}
+  .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
+  .flash.error{background:rgba(247,109,109,.1);border:1px solid rgba(247,109,109,.4);color:#ffb4b4}
+  .flash.success{background:rgba(86,211,100,.1);border:1px solid rgba(86,211,100,.4);color:var(--in)}
+  .hint{color:var(--faint);font-size:12px;margin-top:-8px;margin-bottom:14px}
+  h2{font-size:15px;margin:0 0 14px}
+</style>
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<header>
+  <h1>&#9670; Tuber Platform</h1>
+  <nav class="top">
+    <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint=='admin.dashboard' }}">Dashboard</a>
+    <a href="{{ url_for('admin.users') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.user') }}">Users</a>
+    <a href="{{ url_for('admin.activity') }}" class="{{ 'active' if request.endpoint=='admin.activity' }}">Activity</a>
+    <a href="{{ url_for('admin.logins') }}" class="{{ 'active' if request.endpoint=='admin.logins' }}">Logins</a>
+    <a href="{{ url_for('admin.rewards') }}" class="{{ 'active' if request.endpoint=='admin.rewards' }}">Rewards</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="whoami">{{ current_user.email }} &middot; {{ current_user.role }}</span>
+  <a href="{{ url_for('auth.logout') }}">Log out</a>
+</header>
+{% endif %}
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

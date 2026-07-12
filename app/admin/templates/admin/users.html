@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Users — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <h2 style="margin:0">Users</h2>
+    <a href="{{ url_for('admin.new_user') }}"><button type="button" onclick="location.href='{{ url_for('admin.new_user') }}'">+ New user</button></a>
+  </div>
+  <table>
+    <tr><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th>Created</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td><a href="{{ url_for('admin.user_detail', user_id=u.id) }}">{{ u.email }}</a></td>
+      <td><span class="pill {{ u.role }}">{{ u.role }}</span></td>
+      <td><span class="pill {{ 'ok' if u.is_active_flag else 'off' }}">{{ 'active' if u.is_active_flag else 'inactive' }}</span></td>
+      <td>{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else 'never' }}</td>
+      <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '' }}</td>
+      <td>
+        {% if u.id != current_user.id %}
+        <form method="post" action="{{ url_for('admin.toggle_active', user_id=u.id) }}" style="margin:0">
+          <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px">
+            {{ 'Deactivate' if u.is_active_flag else 'Reactivate' }}
+          </button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">No users yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

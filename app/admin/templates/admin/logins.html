@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Logins — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Login history</h2>
+  <table>
+    <tr><th>User</th><th>IP</th><th>Location</th><th>Success</th><th>User agent</th><th>When</th></tr>
+    {% for e in events %}
+    <tr>
+      <td>{{ e.user.email if e.user else e.user_id }}</td>
+      <td>{{ e.ip_address }}</td>
+      <td>{{ [e.geo_city, e.geo_region, e.geo_country] | select | join(', ') or '—' }}</td>
+      <td>{{ '✓' if e.success else '✗' }}</td>
+      <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.user_agent or '—' }}</td>
+      <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M:%S') if e.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">No logins yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

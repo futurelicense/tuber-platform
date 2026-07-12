@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}New user — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px">
+  <h2>New tuber account</h2>
+  <form method="post">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autofocus>
+    <label for="display_name">Display name (optional)</label>
+    <input id="display_name" name="display_name" type="text">
+    <label for="role">Role</label>
+    <select id="role" name="role" required>
+      <option value="clipper">Clipper</option>
+      <option value="producer">Producer</option>
+      <option value="admin">Admin</option>
+    </select>
+    <div class="hint">A temporary password is generated and shown once — share it out of band.</div>
+    <button type="submit">Create account</button>
+  </form>
+</div>
+{% endblock %}
