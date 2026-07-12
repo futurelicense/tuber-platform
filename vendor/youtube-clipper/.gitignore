@@ -1,0 +1,24 @@
+# downloaded clips
+clips/
+
+# secrets
+.env
+cookies.txt
+credentials.json
+google_token.json
+gdrive_token.json
+tiktok_token.json
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

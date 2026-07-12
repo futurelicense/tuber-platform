@@ -6,6 +6,14 @@ for Producers) behind a single Flask app with accounts, roles, an admin
 dashboard, activity/login monitoring, and IP geolocation. Deploys as one
 Render web service.
 
+`vendor/youtube-clipper` and `vendor/ytproduction` are plain committed
+directories in this repo (not git submodules) — one repo, one push, nothing
+to keep in sync. They're a snapshot of the standalone apps with two small
+platform-specific tweaks (parametrized OAuth redirect URIs and output
+directories, see git log for those files); pulling in upstream changes to
+either app later is a manual copy-and-diff, not an automatic submodule
+update.
+
 See `/home/emc2/.claude/plans/woolly-rolling-bird.md` for the full
 architecture writeup this was built from.
 
@@ -49,11 +57,8 @@ that file's module docstring for why this middleware exists at all.
 These aren't optional polish — the platform won't work correctly on Render
 until they're resolved:
 
-1. **Submodule URLs point at local filesystem paths** (`/home/emc2/Developer/Youtube-Clipper`,
-   `/home/emc2/Developer/ytproduction`), since that's what existed at build
-   time and neither is on a remote host yet. Render's build can't resolve
-   those. Push both to a real git host (GitHub etc.) and update
-   `.gitmodules` + `git submodule set-url` before deploying.
+1. **This repo isn't pushed to a remote yet.** Push it to GitHub (or wherever
+   Render will pull from) before setting up the Blueprint deploy.
 2. **Google OAuth client must be reissued as a "Web application" type.**
    `vendor/youtube-clipper/credentials.json` (gitignored, not vendored) is
    currently a Desktop/installed-app client, which Google restricts to

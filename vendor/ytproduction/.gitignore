@@ -1,0 +1,19 @@
+# generated job output
+output/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# secrets
+.env
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
