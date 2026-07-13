@@ -1,11 +1,20 @@
 import os
 
 
+def _normalized_database_uri():
+    # Render's (and Heroku's) Postgres connectionString uses the "postgres://"
+    # scheme, which SQLAlchemy 1.4+ no longer recognizes — it raises
+    # NoSuchModuleError unless rewritten to "postgresql://". Without this,
+    # every DB-touching route 500s while /healthz (no DB query) still passes.
+    uri = os.environ.get("DATABASE_URL", "sqlite:///" + os.path.join(os.getcwd(), "dev.db"))
+    if uri.startswith("postgres://"):
+        uri = "postgresql://" + uri[len("postgres://"):]
+    return uri
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "sqlite:///" + os.path.join(os.getcwd(), "dev.db")
-    )
+    SQLALCHEMY_DATABASE_URI = _normalized_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
