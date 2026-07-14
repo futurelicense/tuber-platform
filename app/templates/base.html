@@ -54,6 +54,11 @@
   button{background:var(--amber);color:#1a1205;border:none;border-radius:8px;
     padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
   button.secondary{background:none;border:1px solid var(--line-bright);color:var(--muted)}
+  .logout-btn{display:inline-flex;align-items:center;gap:6px;background:none;
+    border:1px solid var(--line-bright);color:var(--text);border-radius:8px;
+    padding:7px 14px;font-size:13px;font-weight:600;transition:all .15s}
+  .logout-btn:hover{border-color:var(--out);color:var(--out);text-decoration:none;
+    background:rgba(247,109,109,.08)}
   .flash{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px}
   .flash.error{background:rgba(247,109,109,.1);border:1px solid rgba(247,109,109,.4);color:#ffb4b4}
   .flash.success{background:rgba(86,211,100,.1);border:1px solid rgba(86,211,100,.4);color:var(--in)}
@@ -74,7 +79,7 @@
   </nav>
   <span class="spacer"></span>
   <span class="whoami">{{ current_user.email }} &middot; {{ current_user.role }}</span>
-  <a href="{{ url_for('auth.logout') }}">Log out</a>
+  <a href="{{ url_for('auth.logout') }}" class="logout-btn">&#8594; Log out</a>
 </header>
 {% endif %}
 <main>
