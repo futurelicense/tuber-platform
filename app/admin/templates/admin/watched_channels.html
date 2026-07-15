@@ -4,12 +4,16 @@
 <div class="card">
   <h2>Watched channels</h2>
   <p class="hint">The suggest-agent polls these on a schedule for new uploads and queues AI clip
-    suggestions in the <a href="{{ url_for('suggestions.queue') }}">Suggestions</a> page.</p>
+    suggestions in the <a href="{{ url_for('suggestions.queue') }}">Suggestions</a> page. Besides a
+    real channel URL, you can also watch a topic by search instead of a fixed channel — e.g.
+    <code>ytsearch20:funniest moments this week</code> — for scouting trending/viral content
+    rather than one creator (keyword-relevance search, not a "most popular" chart — YouTube's own
+    trending feed isn't accessible this way).</p>
   <table style="margin-bottom:18px">
     <tr><th>Channel</th><th>Label</th><th>Platform</th><th>Status</th><th>Last checked</th><th></th></tr>
     {% for c in channels %}
     <tr>
-      <td><a href="{{ c.channel_url }}" target="_blank" rel="noopener">{{ c.channel_url }}</a></td>
+      <td>{% if c.channel_url.startswith('http') %}<a href="{{ c.channel_url }}" target="_blank" rel="noopener">{{ c.channel_url }}</a>{% else %}<code>{{ c.channel_url }}</code>{% endif %}</td>
       <td>{{ c.label or '—' }}</td>
       <td>{{ c.platform_target or 'TikTok (default)' }}</td>
       <td><span class="pill {{ 'ok' if c.is_active else 'off' }}">{{ 'active' if c.is_active else 'inactive' }}</span></td>
@@ -28,8 +32,8 @@
   </table>
 
   <form method="post" action="{{ url_for('admin.new_watched_channel') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-    <div style="flex:1;min-width:220px"><label for="channel_url">Channel URL</label>
-      <input id="channel_url" name="channel_url" placeholder="https://www.youtube.com/@handle" required></div>
+    <div style="flex:1;min-width:220px"><label for="channel_url">Channel URL or search query</label>
+      <input id="channel_url" name="channel_url" placeholder="https://www.youtube.com/@handle or ytsearch20:topic" required></div>
     <div style="flex:1;min-width:140px"><label for="label">Label (optional)</label>
       <input id="label" name="label" placeholder="e.g. MrBeast"></div>
     <div style="min-width:160px">
