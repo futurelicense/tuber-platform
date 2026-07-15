@@ -96,6 +96,39 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
             print(f"  [ytprod] Groq error (attempt {attempt+1}): {e}", flush=True)
     raise RuntimeError(f"Groq API unreachable after 4 attempts: {last_err}")
 
+def _ai_generate_metadata(script: str, title: str):
+    """Generate title/description/hashtags only — no sections. Used by the
+    video-to-sections flow, where sections already come from Clipper's chapter
+    proposal rather than this app's own script-splitting step (run_generation's
+    analysis_prompt). A trimmed version of that same prompt, minus the
+    "sections" key.
+    """
+    prompt = f"""Based on this video script, generate YouTube metadata.
+
+Return ONLY a JSON object:
+{{
+  "title": "<compelling video title based on: '{title or 'auto-generate'}'>",
+  "description": "<YouTube description, 150-250 words, engaging>",
+  "hashtags": ["tag1", "tag2", ... up to 20 relevant tags without #]
+}}
+
+SCRIPT:
+{script}
+
+Return ONLY the JSON, no explanation."""
+
+    raw = _groq(prompt, system="You are a video production AI. Return only valid JSON.",
+                max_tokens=1000)
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        raise ValueError("Could not parse AI response")
+    analysis = json.loads(m.group())
+    vid_title = analysis.get("title", title or "My Video")
+    description = analysis.get("description", "")
+    hashtags = analysis.get("hashtags", [])
+    return vid_title, description, hashtags
+
+
 def _audio_duration(path: str) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path],
@@ -371,6 +404,109 @@ Return ONLY the JSON, no explanation."""
         q.put(None)
 
 
+def run_generation_from_sections(job_id: str, sections_text: list, script_for_tts: str,
+                                  voice: str, vid_title: str, description: str, hashtags: list):
+    """Parallel to run_generation — skips the AI script-split step (Step 1)
+    entirely. sections_text is a producer-approved, possibly hand-edited list
+    of section strings from the video-to-sections review flow (platform-side,
+    not this app). run_generation itself is untouched by this addition, so the
+    existing typed-script path can't regress from this change.
+    """
+    job     = JOBS[job_id]
+    q       = job["queue"]
+    push    = lambda d: _push(q, d)
+    job_dir = os.path.join(OUTPUT_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    try:
+        # Word counts are computed fresh from sections_text here — never carried
+        # over from proposal generation, since the producer may have edited the
+        # text and a stale count would throw off the pre-rescale duration estimate.
+        total_words = sum(len(t.split()) for t in sections_text) or 1
+        total_est = max(total_words / 140 * 60, 10.0)
+
+        sections = []
+        cursor = 0.0
+        for i, text in enumerate(sections_text):
+            wc = len(text.split())
+            dur = max((wc / total_words) * total_est, 2.0)
+            sections.append({
+                "idx": i,
+                "text": text,
+                "start": round(cursor, 2),
+                "end":   round(cursor + dur, 2),
+                "media":     None,
+                "media_ext": None,
+            })
+            cursor += dur
+
+        job.update({
+            "title": vid_title,
+            "description": description,
+            "hashtags": hashtags,
+            "sections": sections,
+        })
+        # Synthetic "analysed" event — the existing frontend's phase-handling/
+        # onAudioReady() logic expects this before "audio"/"audio_done", even
+        # though this path skipped the AI-split step that normally produces it.
+        push({"phase": "analysed", "msg": f"Using {len(sections)} reviewed sections",
+              "section_count": len(sections)})
+
+        # Step 2: audio — identical to run_generation's Step 2. Narrates the full
+        # joined script as ONE continuous file; sections are time-boundaries
+        # within it, not separate TTS calls (matches existing behavior exactly).
+        push({"phase": "audio", "msg": "Generating audio narration…"})
+        if not _EDGE_TTS:
+            raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
+
+        audio_path = os.path.join(job_dir, "narration.mp3")
+
+        async def _tts():
+            communicate = edge_tts.Communicate(script_for_tts, voice, receive_timeout=300)
+            with open(audio_path, "wb") as af:
+                async for chunk in communicate.stream():
+                    if chunk.get("type") == "audio":
+                        af.write(chunk["data"])
+            size = os.path.getsize(audio_path)
+            print(f"  [ytprod] TTS done: {size:,} bytes", flush=True)
+
+        asyncio.run(_tts())
+        job["audio_path"] = audio_path
+
+        # Step 3: rescale — identical to run_generation's Step 3.
+        actual_dur = _audio_duration(audio_path)
+        if actual_dur > 0 and sections:
+            est_total = sections[-1]["end"]
+            ratio = actual_dur / est_total
+            for s in sections:
+                s["start"] = round(s["start"] * ratio, 2)
+                s["end"]   = round(s["end"]   * ratio, 2)
+            sections[-1]["end"] = round(actual_dur, 2)
+
+        job["status"] = "audio_ready"
+        push({
+            "phase": "audio_done",
+            "msg": "Audio ready — upload your media for each section",
+            "audio_dur": round(actual_dur, 2),
+            "sections": sections,
+            "title": vid_title,
+            "description": description,
+            "hashtags": hashtags,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        job["status"] = "error"
+        # run_generation doesn't persist this (only pushes it via the SSE queue,
+        # which drains once consumed) — stored here too so /job-state can report
+        # a real message on resume rather than just "status: error" with no detail.
+        # Only added to this new function; run_generation itself is untouched.
+        job["error_message"] = str(e)
+        push({"phase": "error", "msg": str(e)})
+    finally:
+        q.put(None)
+
+
 # ─── assembly pipeline ────────────────────────────────────────────────
 
 def _fmt_ch(sec: float) -> str:
@@ -524,6 +660,81 @@ def generate():
     threading.Thread(target=run_generation,
                      args=(job_id, script, voice, title, n_sections), daemon=True).start()
     return jsonify({"job_id": job_id})
+
+
+def _start_generation_from_sections(sections_text, voice, title, description, hashtags):
+    """Create a job and spawn run_generation_from_sections. Callable directly
+    in-process (no Flask request context needed — the platform's producer_scout
+    blueprint calls this straight from sys.modules, same pattern as the
+    suggest-agent CLI calling into Clipper's functions) or via the
+    /generate-from-sections HTTP route below, which is a thin wrapper around it.
+    """
+    sections_text = [s.strip() for s in sections_text if isinstance(s, str) and s.strip()]
+    if not sections_text:
+        raise ValueError("No sections provided")
+    script_for_tts = "\n\n".join(sections_text)
+    if len(script_for_tts) < 20:
+        raise ValueError("Script too short")
+
+    job_id = uuid.uuid4().hex
+    JOBS[job_id] = {
+        "status": "running",
+        "queue": queue.Queue(),
+        "script": script_for_tts,
+        "voice": voice,
+        "sections": [],
+        "audio_path": None,
+        "video_path": None,
+    }
+    threading.Thread(
+        target=run_generation_from_sections,
+        args=(job_id, sections_text, script_for_tts, voice, title or "My Video", description, hashtags),
+        daemon=True,
+    ).start()
+    return job_id
+
+
+@app.route("/generate-from-sections", methods=["POST"])
+def generate_from_sections():
+    data = request.get_json(silent=True) or {}
+    try:
+        job_id = _start_generation_from_sections(
+            sections_text=data.get("sections", []),
+            voice=data.get("voice", "en-US-GuyNeural"),
+            title=(data.get("title") or "").strip(),
+            description=data.get("description", ""),
+            hashtags=data.get("hashtags", []),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/job-state/<job_id>")
+def job_state(job_id):
+    """Lightweight snapshot of a job's current state (no queue) — lets the
+    frontend resume a job whose SSE stream has already been fully drained
+    (the sentinel already consumed means reconnecting to /progress hangs
+    forever with no way to ever see that job's state again). Used by the
+    ?job= deep-link resume path.
+    """
+    job = JOBS.get(job_id)
+    if not job:
+        return jsonify({"error": "Not found"}), 404
+    audio_dur = None
+    if job.get("audio_path") and os.path.exists(job["audio_path"]):
+        audio_dur = round(_audio_duration(job["audio_path"]), 2)
+    return jsonify({
+        "status": job.get("status"),
+        "title": job.get("title"),
+        "description": job.get("description"),
+        "hashtags": job.get("hashtags"),
+        "sections": job.get("sections", []),
+        "audio_dur": audio_dur,
+        "has_video": bool(job.get("video_path")),
+        "chapters": job.get("chapters"),
+        "error_message": job.get("error_message"),
+    })
 
 
 @app.route("/progress/<job_id>")
