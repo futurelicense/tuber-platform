@@ -913,7 +913,7 @@ SUMMARY: <one sentence>
     }
 
 
-def _ai_generate_chapters(cues, title="", known_chapters=None):
+def _ai_generate_chapters(cues, title="", known_chapters=None, max_chapters=None):
     """Split the transcript into titled, cleaned chapters via the same AI provider.
 
     If the video already has uploader-defined chapters (passed in via known_chapters,
@@ -921,6 +921,12 @@ def _ai_generate_chapters(cues, title="", known_chapters=None):
     instead of guessing — cheaper to get right and matches what the uploader intended.
     Uses the same plain-text delimiter trick as _ai_clean_script to dodge JSON-escaping
     failures on long free-text chapter bodies.
+
+    max_chapters (optional): caps the natural-break count without forcing it — used by
+    the Producer video-to-sections flow, which needs "up to N" not "exactly N" (forcing
+    a fixed count makes the AI pad/force-split content that doesn't naturally have that
+    many sections, which defeats the point of a human reviewing real boundaries after).
+    Default None leaves /script/chapters's existing behavior untouched.
     """
     transcript = "\n".join(f"[{int(c.get('start', 0))}s] {c.get('text', '')}" for c in cues)
     if len(transcript) > 14000:
@@ -940,6 +946,11 @@ def _ai_generate_chapters(cues, title="", known_chapters=None):
             "video might only need 2-3, a long one might need 8-10. Each chapter's start time "
             "must be one of the actual timestamps shown in the transcript below."
         )
+        if max_chapters:
+            chapter_hint += (
+                f" Propose at most {max_chapters} chapters total — merge closely-related "
+                "natural breaks to stay within that cap rather than force-splitting."
+            )
 
     prompt = f"""You are a professional transcript editor.
 
@@ -985,6 +996,15 @@ TEXT:
     if not chapters:
         raise ValueError(f"Model returned no parseable chapters: {content[:300]}")
     chapters.sort(key=lambda c: c["start"])
+
+    # LLMs don't reliably honor exact numeric caps in prompts (confirmed empirically:
+    # asking for "at most 13" returned 14) — enforce the cap in code rather than trust
+    # the model. Merge from the tail: combine the last two until within the cap, keeping
+    # the earlier chapter's start/title and concatenating text, since content covering
+    # the full transcript still needs to end up somewhere.
+    while max_chapters and len(chapters) > max_chapters:
+        tail = chapters.pop()
+        chapters[-1]["text"] = chapters[-1]["text"].rstrip() + "\n\n" + tail["text"].lstrip()
     return chapters
 
 
