@@ -11,10 +11,11 @@ services:
         value: wsgi:platform_app
       - key: SECRET_KEY
         generateValue: true
+      # Database is Supabase (Session pooler connection string), not a Render-
+      # managed Postgres — set manually in the dashboard, not linked via
+      # fromDatabase. Keep this in sync with the cron job's DATABASE_URL below.
       - key: DATABASE_URL
-        fromDatabase:
-          name: tuber-platform-db
-          property: connectionString
+        sync: false
       - key: PUBLIC_BASE_URL
         sync: false # e.g. https://tuber-platform.onrender.com — no trailing slash
       - key: GEO_API_URL
@@ -43,8 +44,31 @@ services:
       sizeGB: 10
     healthCheckPath: /healthz
 
-databases:
-  - name: tuber-platform-db
-    plan: starter
-    databaseName: tuber_platform
-    user: tuber_platform
+  - type: cron
+    name: tuber-suggest-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 */6 * * *" # every 6 hours
+    dockerCommand: "flask run-suggest-agent"
+    envVars:
+      - key: FLASK_APP
+        value: wsgi:platform_app
+      - key: SECRET_KEY
+        sync: false # same value as the web service's — not security-sensitive
+                     # here since this process never serves HTTP sessions, but
+                     # config.py requires it to be set to boot the app at all
+      - key: DATABASE_URL
+        sync: false # same Supabase connection string as the web service
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: AI_KEY
+        sync: false
+      - key: AI_MODEL
+        value: llama-3.3-70b-versatile
+      - key: AI_ENDPOINT
+        value: https://api.groq.com/openai/v1/chat/completions
+    # Deliberately no `disk:` — nothing in the agent's path touches
+    # CLIPPER_DOWNLOAD_DIR/YTPROD_OUTPUT_DIR (channel listing and transcript
+    # fetch both use skip_download/extract_flat), and Render persistent disks
+    # attach to exactly one service anyway, so this couldn't share the web
+    # service's disk even if something later needed it to.
