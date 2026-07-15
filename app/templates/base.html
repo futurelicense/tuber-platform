@@ -86,6 +86,9 @@
     {% if current_user.role in ('admin', 'clipper') %}
     <a href="{{ url_for('suggestions.queue') }}" class="{{ 'active' if request.endpoint=='suggestions.queue' }}">Suggestions</a>
     {% endif %}
+    {% if current_user.role in ('admin', 'producer') %}
+    <a href="{{ url_for('producer_scout.new') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('producer_scout.') }}">Video to Sections</a>
+    {% endif %}
   </nav>
   <span class="spacer"></span>
   <span class="whoami">{{ current_user.email }} &middot; {{ current_user.role }}</span>

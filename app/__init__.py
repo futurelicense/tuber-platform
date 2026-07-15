@@ -24,10 +24,12 @@ def create_app(config_class=Config):
     from .auth import bp as auth_bp
     from .admin import bp as admin_bp
     from .suggestions import bp as suggestions_bp
+    from .producer_scout import bp as producer_scout_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(suggestions_bp)
+    app.register_blueprint(producer_scout_bp)
 
     @app.route("/healthz")
     def healthz():

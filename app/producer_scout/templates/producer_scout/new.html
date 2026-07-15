@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Video to Sections — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+  <div>
+    <h2 style="margin:0 0 4px">Video to sections</h2>
+    <p class="hint" style="margin:0">Paste a long-form YouTube URL — AI proposes up to 13 reviewable
+      sections you can edit before narration and assembly start.</p>
+  </div>
+  <a href="/produce/"><button type="button" class="secondary">Open Producer directly</button></a>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="post" action="{{ url_for('producer_scout.propose') }}">
+    <label for="video_url">YouTube URL</label>
+    <input id="video_url" name="video_url" type="url" placeholder="https://www.youtube.com/watch?v=…" required autofocus>
+    <div class="hint">Needs English captions on the source video — auto-generated captions work fine.</div>
+    <button type="submit">Propose sections</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Review sections — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 4px">Review before generating</h2>
+  <p class="hint" style="margin:0">From <a href="{{ video_url }}" target="_blank" rel="noopener">{{ video_url }}</a>
+    — {{ chapters|length }} proposed section{{ 's' if chapters|length != 1 }}. Edit anything below, then
+    approve to start narration and media assembly.</p>
+</div>
+
+<form method="post" action="{{ url_for('producer_scout.approve') }}">
+  <div class="card" style="max-width:640px">
+    <label for="title">Title</label>
+    <input id="title" name="title" type="text" value="{{ title }}" required>
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="4">{{ description }}</textarea>
+    <label for="hashtags">Hashtags (comma-separated)</label>
+    <input id="hashtags" name="hashtags" type="text" value="{{ hashtags|join(', ') }}">
+    <label for="voice">Narration voice</label>
+    <select id="voice" name="voice">
+      <optgroup label="English (US)">
+        <option value="en-US-GuyNeural">Guy · Male, News</option>
+        <option value="en-US-JennyNeural">Jenny · Female</option>
+        <option value="en-US-AriaNeural">Aria · Female, Natural</option>
+        <option value="en-US-DavisNeural">Davis · Male, Casual</option>
+        <option value="en-US-TonyNeural">Tony · Male, Bold</option>
+      </optgroup>
+      <optgroup label="English (UK)">
+        <option value="en-GB-RyanNeural">Ryan · Male, British</option>
+        <option value="en-GB-SoniaNeural">Sonia · Female, British</option>
+      </optgroup>
+      <optgroup label="English (Nigeria)">
+        <option value="en-NG-AbeoNeural">Abeo · Male, Nigerian</option>
+        <option value="en-NG-EzinneNeural">Ezinne · Female, Nigerian</option>
+      </optgroup>
+    </select>
+  </div>
+
+  {% for c in chapters %}
+  <div class="card">
+    <h2 style="margin:0 0 8px">Section {{ loop.index }} &mdash; {{ c.title }}</h2>
+    <textarea name="section_text" rows="6" style="width:100%;box-sizing:border-box;font-family:inherit">{{ c.text }}</textarea>
+  </div>
+  {% endfor %}
+
+  <div class="card" style="display:flex;gap:10px">
+    <button type="submit">Approve &amp; generate</button>
+    <a href="{{ url_for('producer_scout.new') }}"><button type="button" class="secondary">Start over</button></a>
+  </div>
+</form>
+{% endblock %}
