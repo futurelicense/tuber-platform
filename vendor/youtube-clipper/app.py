@@ -456,6 +456,61 @@ def _fetch_raw_transcript(url):
     return []
 
 
+_CHANNEL_TAB_SUFFIXES = ("/videos", "/shorts", "/streams", "/community", "/playlists", "/about")
+
+
+def _normalize_channel_videos_url(channel_url):
+    """Force the /videos tab regardless of what (if any) tab suffix was given —
+    a bare channel URL can resolve to a mixed "Home" tab instead of chronological
+    uploads, and Shorts/Streams are excluded by design (this tool pulls clips out
+    of longer content, not shorts).
+    """
+    url = channel_url.strip().rstrip("/")
+    for suffix in _CHANNEL_TAB_SUFFIXES:
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+            break
+    return url + "/videos"
+
+
+def _list_channel_uploads(channel_url, limit=10):
+    """List a channel's most recent uploads (newest-first) without resolving
+    full per-video metadata. Returns [{"id", "title", "url"}] or [] on failure —
+    callers should treat a failed channel as skippable, not fatal (one blocked/
+    dead channel shouldn't abort a run that's also checking other channels).
+
+    Uses extract_flat so this stays fast even for large channels; upload_date
+    is deliberately not part of the return shape — flat extraction often doesn't
+    populate it reliably, so ordering relies on YouTube's /videos tab already
+    being newest-first rather than a client-side sort.
+    """
+    url = _normalize_channel_videos_url(channel_url)
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+        "playlist_items": f"1-{max(1, limit)}",
+    }
+    try:
+        data = _ydl_extract(url, opts, download=False)
+        entries = (data or {}).get("entries") or []
+        videos = []
+        for e in entries:
+            if not e or not e.get("id"):
+                continue
+            videos.append({
+                "id": e["id"],
+                "title": e.get("title") or e["id"],
+                "url": e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
+            })
+        print(f"  [clipper] channel listing: {len(videos)} videos from {url}", flush=True)
+        return videos
+    except Exception as exc:
+        print(f"  [clipper] channel listing failed for {url}: {exc}", file=sys.stderr, flush=True)
+        return []
+
+
 # ─── Google Drive helpers ──────────────────────────────────────────
 
 # Combined scopes: Drive upload + YouTube upload — single OAuth flow covers both
