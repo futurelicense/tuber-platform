@@ -18,11 +18,16 @@
       <td>{{ c.platform_target or 'TikTok (default)' }}</td>
       <td><span class="pill {{ 'ok' if c.is_active else 'off' }}">{{ 'active' if c.is_active else 'inactive' }}</span></td>
       <td>{{ c.last_checked_at.strftime('%Y-%m-%d %H:%M') if c.last_checked_at else 'never' }}</td>
-      <td>
-        <form method="post" action="{{ url_for('admin.toggle_watched_channel', channel_id=c.id) }}" style="margin:0">
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('admin.toggle_watched_channel', channel_id=c.id) }}" style="display:inline;margin:0">
           <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px">
             {{ 'Deactivate' if c.is_active else 'Reactivate' }}
           </button>
+        </form>
+        <form method="post" action="{{ url_for('admin.delete_watched_channel', channel_id=c.id) }}"
+              data-confirm-label="{{ c.label or c.channel_url }}" style="display:inline;margin:0"
+              onsubmit="return confirm('Delete ' + this.dataset.confirmLabel + '? This also removes its discovered videos and suggestions. This cannot be undone.');">
+          <button type="submit" class="danger" style="padding:4px 10px;font-size:12px">Delete</button>
         </form>
       </td>
     </tr>

@@ -14,6 +14,8 @@ from ..models import (
     MetricDefinition,
     RewardRule,
     WatchedChannel,
+    DiscoveredVideo,
+    SuggestedClip,
 )
 
 
@@ -238,4 +240,28 @@ def toggle_watched_channel(channel_id):
         f"{'active' if channel.is_active else 'inactive'}.",
         "success",
     )
+    return redirect(url_for("admin.watched_channels"))
+
+
+@bp.route("/watched-channels/<int:channel_id>/delete", methods=["POST"])
+def delete_watched_channel(channel_id):
+    channel = WatchedChannel.query.get_or_404(channel_id)
+    label = channel.label or channel.channel_url
+
+    # Cascade manually — no ondelete on the FKs, and Postgres enforces them —
+    # a plain delete of the channel would fail if it has any discovered
+    # videos. Deactivate is the reversible option; delete is meant to be a
+    # real, permanent removal (e.g. a mistaken/typo'd entry), so this takes
+    # the suggestion history down with it rather than orphaning rows.
+    video_ids = [v.id for v in DiscoveredVideo.query.filter_by(channel_watch_id=channel.id)]
+    if video_ids:
+        SuggestedClip.query.filter(SuggestedClip.discovered_video_id.in_(video_ids)).delete(
+            synchronize_session=False
+        )
+        DiscoveredVideo.query.filter_by(channel_watch_id=channel.id).delete(
+            synchronize_session=False
+        )
+    db.session.delete(channel)
+    db.session.commit()
+    flash(f"Deleted {label} and its discovered videos/suggestions.", "success")
     return redirect(url_for("admin.watched_channels"))
