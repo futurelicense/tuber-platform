@@ -47,6 +47,7 @@ YTPROD_ROUTES = [
     "/assemble-progress",
     "/result/",
     "/download/",
+    "/job-state/",
 ]
 
 

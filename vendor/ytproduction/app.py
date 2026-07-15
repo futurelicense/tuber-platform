@@ -1813,6 +1813,57 @@ function buildHashtags(tags) {
     setTimeout(() => $('copyHashBtn').textContent = 'Copy all hashtags', 1500);
   };
 }
+
+// ── job resume (?job=<id> deep link) ───────────────────────────────
+// Used by the platform's producer_scout review flow: approving a proposal
+// creates the job server-side and redirects here with ?job=<id> instead of
+// this page creating the job itself via the Generate button.
+(async function resumeJobFromUrl(){
+  const jobId = new URLSearchParams(window.location.search).get('job');
+  if (!jobId) return;
+
+  _jobId = jobId;
+  $('genBtn').disabled = true;
+  $('progressWrap').classList.add('show');
+  buildGenSteps();
+
+  try {
+    const r = await fetch('/job-state/'+jobId);
+    const d = await r.json();
+    if (d.error) { showErr('Job not found.'); return; }
+
+    if (d.status === 'running') {
+      // Still generating — reconnect to the live SSE stream, same as a
+      // normal in-page generation, just skipping the /generate POST.
+      markStep('analysing');
+      streamGenProgress(jobId);
+      return;
+    }
+
+    // SSE queue for this job has already fully drained (sentinel consumed) —
+    // restore state directly from the snapshot instead, since reconnecting
+    // to /progress at this point would hang forever with nothing left to send.
+    markStep('analysing', true);
+    markStep('audio', true);
+    $('progressBar').classList.remove('indet');
+    $('progressBar').querySelector('i').style.width = '100%';
+    $('genBtn').disabled = false;
+
+    if (d.status === 'error' || d.status === 'error_assembly') {
+      showErr(d.error_message || 'This job failed — check the server log.');
+      return;
+    }
+
+    onAudioReady(jobId, d);
+
+    if (d.has_video) {
+      // Assembly already finished in a previous visit — restore that view too.
+      onVideoReady(jobId, d.chapters || '');
+    }
+  } catch(e) {
+    showErr('Could not resume job: '+e.message);
+  }
+})();
 </script>
 </body>
 </html>"""
