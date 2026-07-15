@@ -457,6 +457,7 @@ def _fetch_raw_transcript(url):
 
 
 _CHANNEL_TAB_SUFFIXES = ("/videos", "/shorts", "/streams", "/community", "/playlists", "/about")
+_CHANNEL_URL_MARKERS = ("youtube.com/@", "youtube.com/channel/", "youtube.com/c/", "youtube.com/user/")
 
 
 def _normalize_channel_videos_url(channel_url):
@@ -464,8 +465,16 @@ def _normalize_channel_videos_url(channel_url):
     a bare channel URL can resolve to a mixed "Home" tab instead of chronological
     uploads, and Shorts/Streams are excluded by design (this tool pulls clips out
     of longer content, not shorts).
+
+    Only applies to actual channel URLs. "Watched channels" can also be a
+    yt-dlp search query (e.g. "ytsearch20:funniest moments this week") for
+    topic-based scouting rather than a fixed channel — forcing a /videos
+    suffix onto those would break them outright (confirmed empirically: it
+    turns a valid ytsearch: query into a broken URL).
     """
     url = channel_url.strip().rstrip("/")
+    if not any(marker in url for marker in _CHANNEL_URL_MARKERS):
+        return url
     for suffix in _CHANNEL_TAB_SUFFIXES:
         if url.endswith(suffix):
             url = url[: -len(suffix)]
