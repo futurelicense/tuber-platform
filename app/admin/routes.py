@@ -13,6 +13,7 @@ from ..models import (
     ConnectedChannel,
     MetricDefinition,
     RewardRule,
+    WatchedChannel,
 )
 
 
@@ -196,3 +197,45 @@ def new_rule():
     db.session.commit()
     flash(f"Reward rule '{name}' created.", "success")
     return redirect(url_for("admin.rewards"))
+
+
+@bp.route("/watched-channels")
+def watched_channels():
+    channels = WatchedChannel.query.order_by(WatchedChannel.created_at.desc()).all()
+    return render_template("admin/watched_channels.html", channels=channels)
+
+
+@bp.route("/watched-channels/new", methods=["POST"])
+def new_watched_channel():
+    channel_url = (request.form.get("channel_url") or "").strip()
+    label = (request.form.get("label") or "").strip()
+    platform_target = request.form.get("platform_target") or None
+
+    if not channel_url:
+        flash("Channel URL is required.", "error")
+        return redirect(url_for("admin.watched_channels"))
+
+    db.session.add(
+        WatchedChannel(
+            channel_url=channel_url,
+            label=label or None,
+            platform_target=platform_target,
+            added_by_user_id=current_user.id,
+        )
+    )
+    db.session.commit()
+    flash(f"Now watching {label or channel_url}.", "success")
+    return redirect(url_for("admin.watched_channels"))
+
+
+@bp.route("/watched-channels/<int:channel_id>/toggle-active", methods=["POST"])
+def toggle_watched_channel(channel_id):
+    channel = WatchedChannel.query.get_or_404(channel_id)
+    channel.is_active = not channel.is_active
+    db.session.commit()
+    flash(
+        f"{channel.label or channel.channel_url} is now "
+        f"{'active' if channel.is_active else 'inactive'}.",
+        "success",
+    )
+    return redirect(url_for("admin.watched_channels"))

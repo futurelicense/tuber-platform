@@ -71,11 +71,17 @@
 <header>
   <h1>&#9670; Tuber Platform</h1>
   <nav class="top">
+    {% if current_user.role == 'admin' %}
     <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint=='admin.dashboard' }}">Dashboard</a>
     <a href="{{ url_for('admin.users') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.user') }}">Users</a>
     <a href="{{ url_for('admin.activity') }}" class="{{ 'active' if request.endpoint=='admin.activity' }}">Activity</a>
     <a href="{{ url_for('admin.logins') }}" class="{{ 'active' if request.endpoint=='admin.logins' }}">Logins</a>
     <a href="{{ url_for('admin.rewards') }}" class="{{ 'active' if request.endpoint=='admin.rewards' }}">Rewards</a>
+    <a href="{{ url_for('admin.watched_channels') }}" class="{{ 'active' if request.endpoint=='admin.watched_channels' }}">Watched channels</a>
+    {% endif %}
+    {% if current_user.role in ('admin', 'clipper') %}
+    <a href="{{ url_for('suggestions.queue') }}" class="{{ 'active' if request.endpoint=='suggestions.queue' }}">Suggestions</a>
+    {% endif %}
   </nav>
   <span class="spacer"></span>
   <span class="whoami">{{ current_user.email }} &middot; {{ current_user.role }}</span>

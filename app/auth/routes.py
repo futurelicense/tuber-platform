@@ -69,7 +69,9 @@ def home():
     if current_user.role == "admin":
         return redirect(url_for("admin.dashboard"))
     if current_user.role == "clipper":
-        return redirect("/clip/")
+        # Suggestions queue acts as their inbox — it links into /clip/ itself
+        # when there's something to act on, and offers a plain link there too.
+        return redirect(url_for("suggestions.queue"))
     if current_user.role == "producer":
         return redirect("/produce/")
     return redirect(url_for("auth.login"))

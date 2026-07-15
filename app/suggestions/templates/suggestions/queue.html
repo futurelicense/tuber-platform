@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Suggestions — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+  <div>
+    <h2 style="margin:0 0 4px">Suggestion queue</h2>
+    <p class="hint" style="margin:0">AI-found clip suggestions from watched channels — approve to open in
+      Clipper and cut it yourself, or reject to dismiss.</p>
+  </div>
+  <a href="/clip/"><button type="button" class="secondary">Open Clipper directly</button></a>
+</div>
+
+{% if not by_video %}
+<div class="card" style="color:var(--faint)">No pending suggestions right now.</div>
+{% endif %}
+
+{% for video, clips in by_video.items() %}
+<div class="card">
+  <h2 style="margin-bottom:4px">{{ video.video_title or video.video_url }}</h2>
+  <p class="hint" style="margin-top:0"><a href="{{ video.video_url }}" target="_blank" rel="noopener">{{ video.video_url }}</a></p>
+  <table>
+    <tr><th>Clip</th><th>Time</th><th>Reason</th><th>Platform</th><th></th></tr>
+    {% for c in clips %}
+    <tr>
+      <td>{{ c.title or 'Untitled clip' }}</td>
+      <td style="white-space:nowrap">{{ (c.start // 60) }}:{{ '%02d' % (c.start % 60) }}&ndash;{{ (c.end // 60) }}:{{ '%02d' % (c.end % 60) }}</td>
+      <td style="color:var(--muted)">{{ c.reason }}</td>
+      <td><span class="pill">{{ c.platform }}</span></td>
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('suggestions.approve', clip_id=c.id) }}" style="display:inline;margin:0">
+          <button type="submit" style="padding:5px 12px;font-size:12px">&#10003; Approve</button>
+        </form>
+        <form method="post" action="{{ url_for('suggestions.reject', clip_id=c.id) }}" style="display:inline;margin:0">
+          <button type="submit" class="secondary" style="padding:5px 12px;font-size:12px">Reject</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Watched channels — Tuber Platform{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Watched channels</h2>
+  <p class="hint">The suggest-agent polls these on a schedule for new uploads and queues AI clip
+    suggestions in the <a href="{{ url_for('suggestions.queue') }}">Suggestions</a> page.</p>
+  <table style="margin-bottom:18px">
+    <tr><th>Channel</th><th>Label</th><th>Platform</th><th>Status</th><th>Last checked</th><th></th></tr>
+    {% for c in channels %}
+    <tr>
+      <td><a href="{{ c.channel_url }}" target="_blank" rel="noopener">{{ c.channel_url }}</a></td>
+      <td>{{ c.label or '—' }}</td>
+      <td>{{ c.platform_target or 'TikTok (default)' }}</td>
+      <td><span class="pill {{ 'ok' if c.is_active else 'off' }}">{{ 'active' if c.is_active else 'inactive' }}</span></td>
+      <td>{{ c.last_checked_at.strftime('%Y-%m-%d %H:%M') if c.last_checked_at else 'never' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.toggle_watched_channel', channel_id=c.id) }}" style="margin:0">
+          <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px">
+            {{ 'Deactivate' if c.is_active else 'Reactivate' }}
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">Not watching any channels yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('admin.new_watched_channel') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:1;min-width:220px"><label for="channel_url">Channel URL</label>
+      <input id="channel_url" name="channel_url" placeholder="https://www.youtube.com/@handle" required></div>
+    <div style="flex:1;min-width:140px"><label for="label">Label (optional)</label>
+      <input id="label" name="label" placeholder="e.g. MrBeast"></div>
+    <div style="min-width:160px">
+      <label for="platform_target">Platform</label>
+      <select id="platform_target" name="platform_target">
+        <option value="">TikTok (default)</option>
+        <option value="TikTok">TikTok</option>
+        <option value="Shorts">Shorts</option>
+        <option value="Reels">Reels</option>
+        <option value="Twitter/X">Twitter/X</option>
+        <option value="LinkedIn">LinkedIn</option>
+      </select>
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">+ Watch channel</button></div>
+  </form>
+</div>
+{% endblock %}

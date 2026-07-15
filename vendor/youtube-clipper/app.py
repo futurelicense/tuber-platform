@@ -3243,6 +3243,16 @@ function downloadScript(){
 
 // ── Init ───────────────────────────────────────────────────────────
 makeSegRow(0,30);
+
+// Deep-link support: ?url=<video> prefills and loads it (used by the
+// suggest-agent's review queue when a tuber approves a suggestion).
+(function(){
+  const prefill=new URLSearchParams(window.location.search).get("url");
+  if(prefill){
+    $("url").value=prefill;
+    fetchInfo();
+  }
+})();
 </script>
 </body>
 </html>
