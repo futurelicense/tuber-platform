@@ -73,5 +73,7 @@ def home():
         # when there's something to act on, and offers a plain link there too.
         return redirect(url_for("suggestions.queue"))
     if current_user.role == "producer":
-        return redirect("/produce/")
+        # Video-to-sections is their entry — it links into /produce/ after
+        # approval, and the nav offers a plain Produce link too.
+        return redirect(url_for("producer_scout.new"))
     return redirect(url_for("auth.login"))
