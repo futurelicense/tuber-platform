@@ -76,6 +76,15 @@ def propose():
         flash("Paste a YouTube URL first.", "error")
         return redirect(url_for("producer_scout.new"))
 
+    # A cap, not a target — the AI still splits at natural topic breaks and a
+    # short video comes back with fewer. Clamped rather than rejected: a bad
+    # value here isn't worth making the producer re-type the URL over.
+    try:
+        max_sections = int(request.form.get("max_sections") or MAX_SECTIONS)
+    except ValueError:
+        max_sections = MAX_SECTIONS
+    max_sections = max(1, min(max_sections, MAX_SECTIONS))
+
     clipper = _clipper()
     ytprod = _ytprod()
 
@@ -97,7 +106,7 @@ def propose():
         return redirect(url_for("producer_scout.new"))
 
     try:
-        chapters = clipper._ai_generate_chapters(cues, title=video_title, max_chapters=MAX_SECTIONS)
+        chapters = clipper._ai_generate_chapters(cues, title=video_title, max_chapters=max_sections)
     except Exception as e:
         flash(f"AI sectioning failed: {e}", "error")
         return redirect(url_for("producer_scout.new"))

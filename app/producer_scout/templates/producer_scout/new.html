@@ -15,6 +15,11 @@
     <label for="video_url">YouTube URL</label>
     <input id="video_url" name="video_url" type="url" placeholder="https://www.youtube.com/watch?v=…" required autofocus>
     <div class="hint">Needs English captions on the source video — auto-generated captions work fine.</div>
+    <label for="max_sections">Sections (up to)</label>
+    <input id="max_sections" name="max_sections" type="number" min="1" max="13" value="13" style="max-width:110px">
+    <div class="hint">A maximum, not a target — the AI splits at natural topic breaks, so a short or
+      single-topic video may come back with fewer. Each section becomes one narration segment plus one
+      auto-extracted clip; you can still merge, remove, or re-time sections on the review page.</div>
     <button type="submit">Propose sections</button>
   </form>
 </div>
