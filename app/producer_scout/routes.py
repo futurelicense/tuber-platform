@@ -12,6 +12,28 @@ from ..auth.decorators import roles_required
 MAX_SECTIONS = 13
 
 
+def _fmt_ts(seconds):
+    s = int(round(float(seconds)))
+    m, sec = divmod(s, 60)
+    return f"{m}:{sec:02d}"
+
+
+def _parse_ts(value):
+    """'95', '1:35', '1:02:03' -> seconds (float), or None if unparseable.
+    The review form shows source clip times as editable m:ss for the producer,
+    not raw second counts."""
+    try:
+        parts = [float(p) for p in str(value).strip().split(":")]
+    except (TypeError, ValueError):
+        return None
+    if not parts or len(parts) > 3:
+        return None
+    total = 0.0
+    for p in parts:
+        total = total * 60 + p
+    return total
+
+
 @bp.before_request
 @login_required
 @roles_required("producer")
@@ -89,11 +111,15 @@ def propose():
     sections = []
     for i, c in enumerate(chapters):
         src_end = chapters[i + 1]["start"] if i + 1 < len(chapters) else video_duration
+        src_end = max(src_end, c["start"] + 1)
         sections.append({
             "title": c["title"],
             "text": c["text"],
-            "src_start": c["start"],
-            "src_end": max(src_end, c["start"] + 1),
+            # m:ss display strings — the review form shows these as editable
+            # inputs so the producer can adjust which footage each section
+            # gets, and approve() parses the same format back.
+            "src_start_disp": _fmt_ts(c["start"]),
+            "src_end_disp": _fmt_ts(src_end),
         })
 
     # Metadata is generated from the cleaned chapter text (not the raw
@@ -153,10 +179,8 @@ def approve():
     if video_url:
         src_ranges = []
         for s, e in zip(src_starts, src_ends):
-            try:
-                src_ranges.append((float(s), float(e)))
-            except (TypeError, ValueError):
-                src_ranges.append(None)
+            start, end = _parse_ts(s), _parse_ts(e)
+            src_ranges.append((start, end) if start is not None and end is not None else None)
         # Marked on the job before the redirect (not inside the thread) so the
         # page never loads mid-race and concludes "no prefill running" —
         # /job-state exposes this and the frontend polls it to live-fill

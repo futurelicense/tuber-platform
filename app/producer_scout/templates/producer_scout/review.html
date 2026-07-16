@@ -38,18 +38,92 @@
     </select>
   </div>
 
+  <div id="sectionList">
   {% for s in sections %}
-  <div class="card">
-    <h2 style="margin:0 0 8px">Section {{ loop.index }} &mdash; {{ s.title }}</h2>
+  <div class="card sec-review">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <h2 style="margin:0;flex:1">Section <span class="sec-no">{{ loop.index }}</span> &mdash; {{ s.title }}</h2>
+      <button type="button" class="secondary sec-merge" style="padding:4px 10px;font-size:12px"
+              onclick="mergeUp(this)" title="Fold this section's text and footage range into the one above">&#8613; Merge into previous</button>
+      <button type="button" class="danger sec-remove" style="padding:4px 10px;font-size:12px"
+              onclick="removeSec(this)">&#10005; Remove</button>
+    </div>
     <textarea name="section_text" rows="6" style="width:100%;box-sizing:border-box;font-family:inherit">{{ s.text }}</textarea>
-    <input type="hidden" name="section_src_start" value="{{ s.src_start }}">
-    <input type="hidden" name="section_src_end" value="{{ s.src_end }}">
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <label style="margin:0;font-size:11px">Source clip</label>
+      <input name="section_src_start" value="{{ s.src_start_disp }}" oninput="updateDur(this)"
+             style="width:80px;margin:0;padding:5px 8px;font-size:13px;text-align:center">
+      <span style="color:var(--faint)">&rarr;</span>
+      <input name="section_src_end" value="{{ s.src_end_disp }}" oninput="updateDur(this)"
+             style="width:80px;margin:0;padding:5px 8px;font-size:13px;text-align:center">
+      <span class="hint sec-dur" style="margin:0"></span>
+    </div>
   </div>
   {% endfor %}
+  </div>
 
   <div class="card" style="display:flex;gap:10px">
     <button type="submit">Approve &amp; generate</button>
     <a href="{{ url_for('producer_scout.new') }}"><button type="button" class="secondary">Start over</button></a>
   </div>
 </form>
+
+<script>
+function parseTs(v) {
+  // "95", "1:35", "1:02:03" -> seconds, or NaN
+  const parts = String(v).trim().split(':').map(Number);
+  if (parts.some(isNaN) || !parts.length) return NaN;
+  return parts.reduce((acc, p) => acc * 60 + p, 0);
+}
+function fmtDur(card) {
+  const [si, ei] = card.querySelectorAll('input[name=section_src_start], input[name=section_src_end]');
+  const s = parseTs(si.value), e = parseTs(ei.value);
+  const el = card.querySelector('.sec-dur');
+  if (isNaN(s) || isNaN(e) || e <= s) {
+    el.textContent = '— no clip will be auto-filled';
+  } else {
+    el.textContent = `${Math.round(e - s)}s of source footage`;
+  }
+}
+function updateDur(inp) { fmtDur(inp.closest('.sec-review')); }
+
+function cards() { return Array.from(document.querySelectorAll('#sectionList .sec-review')); }
+
+function renumber() {
+  const all = cards();
+  all.forEach((c, i) => {
+    c.querySelector('.sec-no').textContent = i + 1;
+    // First remaining section has nothing above it to merge into; the last
+    // remaining section must stay removable-proof (approve() needs >= 1).
+    c.querySelector('.sec-merge').style.display = i === 0 ? 'none' : '';
+    c.querySelector('.sec-remove').disabled = all.length === 1;
+  });
+}
+
+function removeSec(btn) {
+  if (cards().length === 1) return;
+  btn.closest('.sec-review').remove();
+  renumber();
+}
+
+function mergeUp(btn) {
+  const card = btn.closest('.sec-review');
+  const all  = cards();
+  const i    = all.indexOf(card);
+  if (i < 1) return;
+  const prev = all[i - 1];
+  const prevText = prev.querySelector('textarea[name=section_text]');
+  const thisText = card.querySelector('textarea[name=section_text]');
+  prevText.value = prevText.value.replace(/\s+$/, '') + '\n\n' + thisText.value.replace(/^\s+/, '');
+  // Footage range grows to cover both — keep prev's start, take this end.
+  prev.querySelector('input[name=section_src_end]').value =
+    card.querySelector('input[name=section_src_end]').value;
+  card.remove();
+  fmtDur(prev);
+  renumber();
+}
+
+renumber();
+cards().forEach(fmtDur);
+</script>
 {% endblock %}
