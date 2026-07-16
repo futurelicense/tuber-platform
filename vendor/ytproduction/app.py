@@ -734,6 +734,11 @@ def job_state(job_id):
         "has_video": bool(job.get("video_path")),
         "chapters": job.get("chapters"),
         "error_message": job.get("error_message"),
+        # Written by the platform's producer_scout clip-extraction thread
+        # ({status, done, total}); absent entirely for typed-script jobs.
+        # The frontend polls this to live-fill section previews as each
+        # auto-extracted clip lands, instead of requiring a page refresh.
+        "clip_prefill": job.get("clip_prefill"),
     })
 
 
@@ -1196,6 +1201,7 @@ video{width:100%;border-radius:8px;background:#000;display:block}
     <audio id="audioPlayer" controls></audio>
     <div class="timeline" id="timeline"></div>
     <a class="dl-btn" id="audioDl" href="#" download style="font-size:11px">&#8595; Download MP3</a>
+    <div id="prefillNote" style="display:none;font-size:11px;color:var(--faint);margin-top:6px"></div>
   </div>
 
   <!-- scrollable section cards -->
@@ -1454,6 +1460,57 @@ function onAudioReady(jobId, data) {
   buildHashtags(data.hashtags || []);
 
   $('assembleBtn').disabled = false;
+
+  // Clips extracted from a source video (producer_scout flow) usually finish
+  // AFTER the narration audio does — keep syncing them in live rather than
+  // making the producer refresh. First poll no-ops and stops for jobs with
+  // no prefill running (typed-script flow).
+  pollClipPrefill(jobId);
+}
+
+// ── live-fill of auto-extracted section clips ─────────────────────────
+let _prefillTimer = null;
+
+function pollClipPrefill(jobId) {
+  if (_prefillTimer) clearInterval(_prefillTimer);
+
+  const tick = async () => {
+    let d;
+    try {
+      const r = await fetch('/job-state/'+jobId);
+      d = await r.json();
+    } catch(e) { return; } // transient network error — try again next tick
+
+    (d.sections || []).forEach(s => {
+      const local = _sections[s.idx];
+      // media_ready means this card already shows a preview (either an earlier
+      // sync or the producer's own upload — which always wins, never replaced).
+      // dismissed means they clicked "Change media" on the auto clip — don't
+      // shove the same clip straight back under their cursor.
+      if (!local || local.media_ready || local.dismissed || !s.media) return;
+      const ext     = (s.media_ext || '').toLowerCase();
+      const isVideo = ['.mp4', '.mov', '.webm'].includes(ext);
+      const file    = String(s.media).split(/[\\/]/).pop();
+      $('su-'+s.idx).innerHTML = sectionPreviewHtml(`/result/${jobId}/${file}`, isVideo, s.idx, jobId);
+      $('sec-card-'+s.idx).style.borderColor = '#059669';
+      local.media_ready = true;
+      local.ext = ext || null;
+    });
+
+    const pf = d.clip_prefill;
+    const note = $('prefillNote');
+    if (pf && pf.status === 'running') {
+      note.style.display = '';
+      note.textContent = `✂ Auto-filling clips from the source video… ${pf.done}/${pf.total}`;
+    } else {
+      note.style.display = 'none';
+      clearInterval(_prefillTimer);
+      _prefillTimer = null;
+    }
+  };
+
+  _prefillTimer = setInterval(tick, 3000);
+  tick();
 }
 
 // ── timeline ─────────────────────────────────────────────────────────
@@ -1504,7 +1561,12 @@ function buildSectionCard(jobId, s) {
   card.className = 'sec-card';
   card.id = 'sec-card-'+s.idx;
   const isVideo    = ['.mp4', '.mov', '.webm'].includes(s.ext);
-  const previewUrl = `/result/${jobId}/section_${String(s.idx).padStart(3,'0')}${s.ext || ''}`;
+  // Server-side media is an absolute path; anything in the job dir is
+  // servable via /result/<job>/<basename>. Derived from the real filename
+  // rather than assuming section_XXX naming, since auto-extracted clips
+  // (producer_scout) use a distinct _auto suffix to dodge upload collisions.
+  const mediaFile  = s.media ? String(s.media).split(/[\\/]/).pop() : '';
+  const previewUrl = `/result/${jobId}/${mediaFile}`;
   const uploadBlock = s.media_ready
     ? sectionPreviewHtml(previewUrl, isVideo, s.idx, jobId)
     : `<div class="drop-zone" id="dz-${s.idx}"
@@ -1617,6 +1679,7 @@ async function uploadSection(idx, jobId, file) {
 
 function resetSection(idx, jobId) {
   _sections[idx].media_ready = false;
+  _sections[idx].dismissed   = true; // stops pollClipPrefill re-filling this card
   const su = $('su-'+idx);
   su.innerHTML = `
 <div class="drop-zone" id="dz-${idx}"

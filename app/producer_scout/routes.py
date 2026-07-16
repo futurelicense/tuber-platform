@@ -157,6 +157,12 @@ def approve():
                 src_ranges.append((float(s), float(e)))
             except (TypeError, ValueError):
                 src_ranges.append(None)
+        # Marked on the job before the redirect (not inside the thread) so the
+        # page never loads mid-race and concludes "no prefill running" —
+        # /job-state exposes this and the frontend polls it to live-fill
+        # section previews as each clip lands.
+        total = sum(1 for r in src_ranges if r and r[1] > r[0])
+        ytprod.JOBS[job_id]["clip_prefill"] = {"status": "running", "done": 0, "total": total}
         threading.Thread(
             target=_extract_section_clips,
             args=(job_id, video_url, src_ranges),
@@ -182,6 +188,10 @@ def _extract_section_clips(job_id, video_url, src_ranges):
     job = ytprod.JOBS.get(job_id)
     if job is None:
         return
+    prefill = job.get("clip_prefill") or {}
+
+    def _finish(status):
+        prefill["status"] = status
 
     # run_generation_from_sections populates job["sections"] almost
     # immediately (Step 1, before the TTS call that actually takes real
@@ -193,6 +203,7 @@ def _extract_section_clips(job_id, video_url, src_ranges):
         time.sleep(0.1)
     sections = job.get("sections") or []
     if not sections:
+        _finish("error")
         return
 
     job_dir = os.path.join(ytprod.OUTPUT_DIR, job_id)
@@ -203,6 +214,7 @@ def _extract_section_clips(job_id, video_url, src_ranges):
         info = clipper._resolve_stream_info(video_url)
     except Exception as e:
         print(f"  [producer_scout] couldn't resolve source video for clip extraction: {e}", flush=True)
+        _finish("error")
         return
 
     for i, rng in enumerate(src_ranges):
@@ -211,7 +223,16 @@ def _extract_section_clips(job_id, video_url, src_ranges):
         start, end = rng
         if end <= start:
             continue
-        out_file = os.path.join(job_dir, f"section_{i:03d}.mp4")
+        # The producer may have manually uploaded media for this section while
+        # earlier clips were still cutting — their explicit choice wins, don't
+        # overwrite it with the auto-extract.
+        if sections[i].get("media"):
+            prefill["done"] = prefill.get("done", 0) + 1
+            continue
+        # "_auto" suffix keeps this path distinct from /upload-section's
+        # section_{idx}{ext} naming — a manual upload mid-extraction must
+        # never race ffmpeg writing to the same file.
+        out_file = os.path.join(job_dir, f"section_{i:03d}_auto.mp4")
         try:
             clipper._extract_clip_from_info(info, start, end, out_file)
         except Exception as e:
@@ -221,3 +242,6 @@ def _extract_section_clips(job_id, video_url, src_ranges):
         # reads these two keys the same way regardless of how media got here.
         sections[i]["media"] = out_file
         sections[i]["media_ext"] = ".mp4"
+        prefill["done"] = prefill.get("done", 0) + 1
+
+    _finish("done")
