@@ -43,7 +43,7 @@ OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "outpu
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.3-70b-versatile")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
 
 JOBS: dict = {}
 app = Flask(__name__)
@@ -1422,7 +1422,16 @@ function streamGenProgress(jobId) {
 // ── after audio ready ────────────────────────────────────────────────
 function onAudioReady(jobId, data) {
   _audioDur   = data.audio_dur || 0;
-  _sections   = (data.sections || []).map(s => ({...s, media_ready: false, ext: null}));
+  // media_ready/ext reflect whatever the server already has for this section —
+  // e.g. pre-filled by the producer_scout video-to-sections flow, which cuts
+  // a matching clip from the source video before narration even finishes.
+  // Manually-typed-script jobs still start every section with media: null,
+  // so this is a no-op for that flow (media_ready stays false as before).
+  _sections   = (data.sections || []).map(s => ({
+    ...s,
+    media_ready: !!s.media,
+    ext: s.media_ext || null,
+  }));
   _hashtags   = data.hashtags  || [];
   JOBS_title  = data.title || '';
 
@@ -1472,12 +1481,43 @@ function refreshTimeline() {
   buildTimeline(_sections, _audioDur);
 }
 
+// ── section media preview (shared by an initial pre-filled render and a
+// fresh manual upload, so both end up with identical markup) ──────────────
+function sectionPreviewHtml(previewUrl, isVideo, idx, jobId) {
+  const media = isVideo
+    ? `<video class="sec-preview" src="${previewUrl}" muted playsinline
+    onmouseover="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>
+  <span class="sec-preview-badge">VIDEO</span>`
+    : `<img class="sec-preview" src="${previewUrl}" alt="Section ${idx+1}">
+  <span class="sec-preview-badge">IMAGE</span>`;
+  return `
+<div class="sec-preview-wrap">
+  ${media}
+</div>
+<span class="sec-preview-change" onclick="resetSection(${idx},'${jobId}')">&#8635; Change media</span>`;
+}
+
 // ── section cards ─────────────────────────────────────────────────────
 function buildSectionCard(jobId, s) {
   const color = SEC_COLS[s.idx % SEC_COLS.length];
   const card  = document.createElement('div');
   card.className = 'sec-card';
   card.id = 'sec-card-'+s.idx;
+  const isVideo    = ['.mp4', '.mov', '.webm'].includes(s.ext);
+  const previewUrl = `/result/${jobId}/section_${String(s.idx).padStart(3,'0')}${s.ext || ''}`;
+  const uploadBlock = s.media_ready
+    ? sectionPreviewHtml(previewUrl, isVideo, s.idx, jobId)
+    : `<div class="drop-zone" id="dz-${s.idx}"
+       onclick="$('fi-${s.idx}').click()"
+       ondragover="dzDragOver(event,${s.idx})"
+       ondragleave="dzDragLeave(${s.idx})"
+       ondrop="dzDrop(event,${s.idx},'${jobId}')">
+    <input type="file" id="fi-${s.idx}" accept="image/*,video/mp4,video/mov,video/webm"
+           onchange="uploadSection(${s.idx},'${jobId}',this.files[0])">
+    &#128247; Drop image or video here<br>
+    <span style="color:var(--faint);font-size:10px">JPG · PNG · MP4 · MOV · WebM</span>
+  </div>
+  <div class="upload-err" id="ue-${s.idx}"></div>`;
   card.innerHTML = `
 <div class="sec-head">
   <span class="sec-num" style="color:${color}">§${s.idx+1}</span>
@@ -1490,19 +1530,8 @@ function buildSectionCard(jobId, s) {
   </div>
 </div>
 <div class="sec-text" title="${escHtml(s.text)}">${escHtml(s.text)}</div>
-<div class="sec-upload" id="su-${s.idx}">
-  <div class="drop-zone" id="dz-${s.idx}"
-       onclick="$('fi-${s.idx}').click()"
-       ondragover="dzDragOver(event,${s.idx})"
-       ondragleave="dzDragLeave(${s.idx})"
-       ondrop="dzDrop(event,${s.idx},'${jobId}')">
-    <input type="file" id="fi-${s.idx}" accept="image/*,video/mp4,video/mov,video/webm"
-           onchange="uploadSection(${s.idx},'${jobId}',this.files[0])">
-    &#128247; Drop image or video here<br>
-    <span style="color:var(--faint);font-size:10px">JPG · PNG · MP4 · MOV · WebM</span>
-  </div>
-  <div class="upload-err" id="ue-${s.idx}"></div>
-</div>`;
+<div class="sec-upload" id="su-${s.idx}">${uploadBlock}</div>`;
+  if (s.media_ready) card.style.borderColor = '#059669';
   $('sectionsArea').appendChild(card);
 }
 
@@ -1570,22 +1599,8 @@ async function uploadSection(idx, jobId, file) {
 
     // show preview
     const su = $('su-'+idx);
-    if (res.is_video) {
-      su.innerHTML = `
-<div class="sec-preview-wrap">
-  <video class="sec-preview" src="${res.preview}" muted playsinline
-    onmouseover="this.play()" onmouseleave="this.pause();this.currentTime=0"></video>
-  <span class="sec-preview-badge">VIDEO</span>
-</div>
-<span class="sec-preview-change" onclick="resetSection(${idx},'${jobId}')">&#8635; Change media</span>`;
-    } else {
-      su.innerHTML = `
-<div class="sec-preview-wrap">
-  <img class="sec-preview" src="${res.preview}?t=${Date.now()}" alt="Section ${idx+1}">
-  <span class="sec-preview-badge">IMAGE</span>
-</div>
-<span class="sec-preview-change" onclick="resetSection(${idx},'${jobId}')">&#8635; Change media</span>`;
-    }
+    const previewUrl = res.is_video ? res.preview : `${res.preview}?t=${Date.now()}`;
+    su.innerHTML = sectionPreviewHtml(previewUrl, res.is_video, idx, jobId);
 
     $('sec-card-'+idx).style.borderColor = '#059669';
     _sections[idx].media_ready = true;

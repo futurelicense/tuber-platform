@@ -273,6 +273,32 @@ def _ffmpeg_download_clip(data, start, end, quality, ratio, out_file, push, srt_
         raise RuntimeError(f"ffmpeg exited {proc.returncode}: {err_tail}")
 
 
+def _resolve_stream_info(url, quality="best"):
+    """Resolve stream URLs for a video once, for reuse across multiple clip
+    cuts from the same source. Used by the platform's producer_scout blueprint
+    when pre-filling several Producer sections with footage from one video —
+    avoids re-hitting yt-dlp per section.
+    """
+    info_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "format": format_for_quality(quality),
+    }
+    data = _ydl_extract(url, info_opts, download=False)
+    if data.get("_type") == "playlist" and data.get("entries"):
+        data = data["entries"][0]
+    return data
+
+
+def _extract_clip_from_info(data, start, end, out_file, quality="best", ratio="original"):
+    """Cut [start, end) out of an already-resolved video (see
+    _resolve_stream_info) straight to out_file — no job/queue/SSE bookkeeping,
+    for in-process callers.
+    """
+    _ffmpeg_download_clip(data, start, end, quality, ratio, out_file, push=lambda e: None)
+
+
 # ----------------------------- helpers -----------------------------
 
 def parse_time(value):
@@ -636,7 +662,7 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 #   AI_ENDPOINT=https://router.huggingface.co/hf-inference/v1/chat/completions
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.3-70b-versatile")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
 
 _PLATFORM_CFG = {
     "TikTok": {
@@ -832,9 +858,12 @@ Return ONLY a valid JSON array, no explanation, no markdown:
     return out
 
 
-def _ai_chat_completion(prompt, max_tokens):
+def _ai_chat_completion(prompt, max_tokens, retries=3):
     """POST a single chat completion to the configured AI provider (Groq/OpenRouter/HF/etc,
     same config as the clip suggester). Shared by script cleanup and chapter generation.
+
+    Retries on 429 (rate / TPM limits) using Retry-After when present. 413 and exhausted
+    retries surface a clear "too long / rate limit" message so callers can chunk further.
     """
     ai_key = os.environ.get("AI_KEY", "").strip() or os.environ.get("HF_API_KEY", "").strip()
     if not ai_key:
@@ -846,28 +875,44 @@ def _ai_chat_completion(prompt, max_tokens):
         "max_tokens": max_tokens,
         "temperature": 0.2,
     }).encode()
-    req = _urllib_req.Request(
-        _AI_ENDPOINT, data=body,
-        headers={
-            "Authorization": f"Bearer {ai_key}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (compatible; Clipper/1.0)",
-            "Accept": "application/json",
-        },
-    )
-    try:
-        with _urllib_req.urlopen(req, timeout=150) as resp:
-            result = json.loads(resp.read().decode())
-    except _urllib_req.HTTPError as e:
-        if e.code == 413:
-            raise RuntimeError(
-                "This video's transcript is too long for the configured AI model's token/rate "
-                "limit. Try a shorter video, or check your AI provider's tier limits in .env."
-            )
-        raise RuntimeError(f"AI API returned {e.code}: {e.read().decode()[:300]}")
 
-    content = result["choices"][0]["message"]["content"].strip()
-    return re.sub(r"```[a-z]*\n?", "", content).strip()
+    last_err = None
+    for attempt in range(retries):
+        req = _urllib_req.Request(
+            _AI_ENDPOINT, data=body,
+            headers={
+                "Authorization": f"Bearer {ai_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; Clipper/1.0)",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with _urllib_req.urlopen(req, timeout=150) as resp:
+                result = json.loads(resp.read().decode())
+            content = result["choices"][0]["message"]["content"].strip()
+            return re.sub(r"```[a-z]*\n?", "", content).strip()
+        except _urllib_req.HTTPError as e:
+            err_body = e.read().decode(errors="replace")[:400]
+            last_err = e
+            if e.code == 429 and attempt < retries - 1:
+                # Prefer provider-supplied retry-after; otherwise wait out a TPM window.
+                retry_after = e.headers.get("Retry-After") or e.headers.get("retry-after")
+                try:
+                    wait = float(retry_after)
+                except (TypeError, ValueError):
+                    wait = 12.0 * (attempt + 1)
+                print(f"  [clipper] AI 429 — retrying in {wait:.1f}s ({attempt + 1}/{retries})", flush=True)
+                time.sleep(wait)
+                continue
+            if e.code in (413, 429):
+                raise RuntimeError(
+                    "This video's transcript is too long for the configured AI model's token/rate "
+                    "limit. Try a shorter video, or check your AI provider's tier limits in .env."
+                )
+            raise RuntimeError(f"AI API returned {e.code}: {err_body}")
+
+    raise RuntimeError(f"AI API failed after retries: {last_err}")
 
 
 def _ai_clean_script(cues, title=""):
@@ -913,48 +958,141 @@ SUMMARY: <one sentence>
     }
 
 
-def _ai_generate_chapters(cues, title="", known_chapters=None, max_chapters=None):
-    """Split the transcript into titled, cleaned chapters via the same AI provider.
+# Tuned for Groq free-tier llama-3.1-8b-instant (~6K TPM): each chunk's prompt
+# (~chars/4 tokens) + max_tokens must stay under that budget with headroom.
+_CHAPTER_TRANSCRIPT_CHUNK_CHARS = 5500
+_CHAPTER_CHUNK_MAX_TOKENS = 2200
+_CHAPTER_CHUNK_SLEEP_S = 12
 
-    If the video already has uploader-defined chapters (passed in via known_chapters,
-    read from yt-dlp's info dict), the model is told to use those exact boundaries
-    instead of guessing — cheaper to get right and matches what the uploader intended.
-    Uses the same plain-text delimiter trick as _ai_clean_script to dodge JSON-escaping
-    failures on long free-text chapter bodies.
 
-    max_chapters (optional): caps the natural-break count without forcing it — used by
-    the Producer video-to-sections flow, which needs "up to N" not "exactly N" (forcing
-    a fixed count makes the AI pad/force-split content that doesn't naturally have that
-    many sections, which defeats the point of a human reviewing real boundaries after).
-    Default None leaves /script/chapters's existing behavior untouched.
+def _cue_chunks_by_chars(cues, max_chars=_CHAPTER_TRANSCRIPT_CHUNK_CHARS):
+    """Split cues into contiguous chunks whose stamped transcript fits max_chars."""
+    if not cues:
+        return []
+    chunks, current, size = [], [], 0
+    for c in cues:
+        line = f"[{int(c.get('start', 0))}s] {c.get('text', '')}"
+        # Start a new chunk when the next line would overflow (keep at least one cue).
+        if current and size + len(line) + 1 > max_chars:
+            chunks.append(current)
+            current, size = [], 0
+        current.append(c)
+        size += len(line) + 1
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _parse_chapter_blocks(content):
+    """Parse ### CHAPTER blocks; tolerate same-line headings from smaller models.
+
+    llama-3.1-8b often emits:
+      ### CHAPTER START: 0 TITLE: Foo TEXT: body...
+    instead of the multiline format the prompt asks for. Accept both.
     """
+    chapters = []
+    # CHAPTER marker may be followed by newline OR the START field on the same line.
+    parts = re.split(r"###\s*CHAPTER\b", content, flags=re.IGNORECASE)
+    for block in parts:
+        block = block.strip().lstrip(":").strip()
+        if not block:
+            continue
+        m = re.search(
+            r"START:\s*(\d+)\s*"
+            r"TITLE:\s*(.*?)\s*"
+            r"TEXT:\s*(.*)",
+            block,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if not m:
+            continue
+        title = m.group(2).strip().split("\n", 1)[0].strip()
+        text = m.group(3).strip()
+        # If the model glued the next chapter onto this block without a ### marker,
+        # cut text at the next START:/TITLE: pair.
+        nxt = re.search(r"\n\s*START:\s*\d+\s*TITLE:", text, re.IGNORECASE)
+        if nxt:
+            text = text[: nxt.start()].strip()
+        if not text:
+            continue
+        chapters.append({
+            "start": int(m.group(1)),
+            "title": title,
+            "text": text,
+        })
+
+    # Fallback: no ### CHAPTER markers at all — scan for START/TITLE/TEXT triples.
+    if not chapters:
+        for m in re.finditer(
+            r"START:\s*(\d+)\s*TITLE:\s*(.*?)\s*TEXT:\s*(.*?)(?=\s*START:\s*\d+\s*TITLE:|\Z)",
+            content,
+            re.DOTALL | re.IGNORECASE,
+        ):
+            title = m.group(2).strip().split("\n", 1)[0].strip()
+            text = m.group(3).strip()
+            if text:
+                chapters.append({
+                    "start": int(m.group(1)),
+                    "title": title,
+                    "text": text,
+                })
+    return chapters
+
+
+def _ai_chapters_for_chunk(cues, title="", known_chapters=None, max_chapters=None,
+                          chunk_index=0, chunk_count=1):
+    """One AI chapter-generation call over a single cue chunk."""
     transcript = "\n".join(f"[{int(c.get('start', 0))}s] {c.get('text', '')}" for c in cues)
-    if len(transcript) > 14000:
-        transcript = transcript[:14000] + "\n…[truncated]"
+    t0 = int(cues[0].get("start", 0))
+    t1 = int(cues[-1].get("start", 0))
 
     if known_chapters:
-        chapter_hint = (
-            "The uploader already defined these chapters for this video — segment the "
-            "transcript using these EXACT start times in seconds and these titles "
-            "(only lightly polish wording, don't rename them):\n" +
-            "\n".join(f"- {int(c.get('start', 0))}s: {c.get('title', '')}" for c in known_chapters)
-        )
+        # Only hint chapters that fall inside this chunk's time span (+ small slack).
+        relevant = [
+            c for c in known_chapters
+            if t0 - 5 <= int(c.get("start", 0)) <= t1 + 30
+        ]
+        if relevant:
+            chapter_hint = (
+                "The uploader already defined these chapters for this part of the video — "
+                "segment the transcript using these EXACT start times in seconds and these "
+                "titles (only lightly polish wording, don't rename them):\n" +
+                "\n".join(f"- {int(c.get('start', 0))}s: {c.get('title', '')}" for c in relevant)
+            )
+        else:
+            chapter_hint = (
+                "Split this part of the transcript into natural chapters wherever the topic "
+                "or focus clearly shifts. Each chapter's start time must be one of the actual "
+                "timestamps shown in the transcript below."
+            )
     else:
         chapter_hint = (
-            "This video has no defined chapters. Split it into natural chapters yourself — "
-            "wherever the topic or focus clearly shifts. Don't force a fixed count; a short "
-            "video might only need 2-3, a long one might need 8-10. Each chapter's start time "
-            "must be one of the actual timestamps shown in the transcript below."
+            "This video has no defined chapters. Split this part into natural chapters "
+            "yourself — wherever the topic or focus clearly shifts. Don't force a fixed "
+            "count; a short segment might only need 1-2, a longer one might need 3-5. "
+            "Each chapter's start time must be one of the actual timestamps shown below."
         )
-        if max_chapters:
+        if max_chapters and chunk_count == 1:
             chapter_hint += (
                 f" Propose at most {max_chapters} chapters total — merge closely-related "
                 "natural breaks to stay within that cap rather than force-splitting."
             )
+        elif max_chapters and chunk_count > 1:
+            # Soft per-chunk cap so later merges don't explode past max_chapters.
+            per = max(2, (max_chapters + chunk_count - 1) // chunk_count)
+            chapter_hint += f" Propose at most {per} chapters for this segment."
+
+    span_note = ""
+    if chunk_count > 1:
+        span_note = (
+            f"\nThis is part {chunk_index + 1} of {chunk_count} of a longer video "
+            f"(approx {t0}s–{t1}s). Only chapterize THIS transcript segment."
+        )
 
     prompt = f"""You are a professional transcript editor.
 
 Below is a raw, unpunctuated auto-generated caption transcript from a YouTube video{f' titled "{title}"' if title else ""}, with each line's approximate start time in seconds.
+{span_note}
 
 {chapter_hint}
 
@@ -978,24 +1116,64 @@ TEXT:
 <cleaned script for this chapter>
 (repeat for every chapter, covering the entire transcript start to finish with no gaps)"""
 
-    content = _ai_chat_completion(prompt, max_tokens=5000)
-
-    chapters = []
-    for block in re.split(r"###\s*CHAPTER\s*\n", content):
-        block = block.strip()
-        if not block:
-            continue
-        m = re.match(r"START:\s*(\d+).*?\nTITLE:\s*(.*?)\s*\nTEXT:\s*\n(.*)", block, re.DOTALL)
-        if not m:
-            continue
-        chapters.append({
-            "start": int(m.group(1)),
-            "title": m.group(2).strip(),
-            "text": m.group(3).strip(),
-        })
+    content = _ai_chat_completion(prompt, max_tokens=_CHAPTER_CHUNK_MAX_TOKENS)
+    chapters = _parse_chapter_blocks(content)
     if not chapters:
         raise ValueError(f"Model returned no parseable chapters: {content[:300]}")
+    return chapters
+
+
+def _ai_generate_chapters(cues, title="", known_chapters=None, max_chapters=None):
+    """Split the transcript into titled, cleaned chapters via the same AI provider.
+
+    If the video already has uploader-defined chapters (passed in via known_chapters,
+    read from yt-dlp's info dict), the model is told to use those exact boundaries
+    instead of guessing — cheaper to get right and matches what the uploader intended.
+    Uses the same plain-text delimiter trick as _ai_clean_script to dodge JSON-escaping
+    failures on long free-text chapter bodies.
+
+    Long transcripts are chunked so each request fits free-tier token-per-minute budgets
+    (e.g. Groq llama-3.1-8b-instant at ~6K TPM). Results are merged afterwards.
+
+    max_chapters (optional): caps the natural-break count without forcing it — used by
+    the Producer video-to-sections flow, which needs "up to N" not "exactly N" (forcing
+    a fixed count makes the AI pad/force-split content that doesn't naturally have that
+    many sections, which defeats the point of a human reviewing real boundaries after).
+    Default None leaves /script/chapters's existing behavior untouched.
+    """
+    chunks = _cue_chunks_by_chars(cues)
+    if not chunks:
+        raise ValueError("No transcript cues to chapterize")
+
+    chapters = []
+    for i, chunk in enumerate(chunks):
+        if i > 0:
+            # Let the TPM window refill between sequential chunk calls.
+            time.sleep(_CHAPTER_CHUNK_SLEEP_S)
+        part = _ai_chapters_for_chunk(
+            chunk,
+            title=title,
+            known_chapters=known_chapters,
+            max_chapters=max_chapters,
+            chunk_index=i,
+            chunk_count=len(chunks),
+        )
+        chapters.extend(part)
+
     chapters.sort(key=lambda c: c["start"])
+    # Drop accidental duplicate starts from chunk boundaries (keep the first).
+    deduped = []
+    seen_starts = set()
+    for c in chapters:
+        if c["start"] in seen_starts:
+            if deduped:
+                deduped[-1]["text"] = (
+                    deduped[-1]["text"].rstrip() + "\n\n" + c["text"].lstrip()
+                )
+            continue
+        seen_starts.add(c["start"])
+        deduped.append(c)
+    chapters = deduped
 
     # LLMs don't reliably honor exact numeric caps in prompts (confirmed empirically:
     # asking for "at most 13" returned 14) — enforce the cap in code rather than trust

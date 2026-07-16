@@ -1,4 +1,7 @@
+import os
 import sys
+import threading
+import time
 
 from flask import render_template, request, redirect, flash, url_for
 from flask_login import login_required
@@ -61,6 +64,7 @@ def propose():
         if info.get("_type") == "playlist" and info.get("entries"):
             info = info["entries"][0]
         video_title = info.get("title", "")
+        video_duration = info.get("duration") or 0
     except Exception as e:
         flash(f"Couldn't read that video: {e}", "error")
         return redirect(url_for("producer_scout.new"))
@@ -76,10 +80,26 @@ def propose():
         flash(f"AI sectioning failed: {e}", "error")
         return redirect(url_for("producer_scout.new"))
 
+    # Each section's *source* time range — chapter i runs from its own start
+    # to the next chapter's start (or the video's end for the last one). Only
+    # used to pre-fill each section's media with the matching footage after
+    # approval; has nothing to do with the narration timeline, which is a
+    # completely different clock (word-count estimated, then rescaled to the
+    # synthesized audio's real duration).
+    sections = []
+    for i, c in enumerate(chapters):
+        src_end = chapters[i + 1]["start"] if i + 1 < len(chapters) else video_duration
+        sections.append({
+            "title": c["title"],
+            "text": c["text"],
+            "src_start": c["start"],
+            "src_end": max(src_end, c["start"] + 1),
+        })
+
     # Metadata is generated from the cleaned chapter text (not the raw
     # transcript) so title/description reflect the same polished script the
     # producer is about to review, not the noisy auto-caption source.
-    script_preview = "\n\n".join(c["text"] for c in chapters)
+    script_preview = "\n\n".join(s["text"] for s in sections)
     try:
         vid_title, description, hashtags = ytprod._ai_generate_metadata(script_preview, video_title)
     except Exception as e:
@@ -89,7 +109,7 @@ def propose():
     return render_template(
         "producer_scout/review.html",
         video_url=video_url,
-        chapters=chapters,
+        sections=sections,
         title=vid_title,
         description=description,
         hashtags=hashtags,
@@ -98,7 +118,10 @@ def propose():
 
 @bp.route("/approve", methods=["POST"])
 def approve():
+    video_url = (request.form.get("video_url") or "").strip()
     section_texts = request.form.getlist("section_text")
+    src_starts = request.form.getlist("section_src_start")
+    src_ends = request.form.getlist("section_src_end")
     title = (request.form.get("title") or "").strip()
     description = request.form.get("description") or ""
     hashtags = [h.strip() for h in (request.form.get("hashtags") or "").split(",") if h.strip()]
@@ -127,4 +150,74 @@ def approve():
         flash(str(e), "error")
         return redirect(url_for("producer_scout.new"))
 
+    if video_url:
+        src_ranges = []
+        for s, e in zip(src_starts, src_ends):
+            try:
+                src_ranges.append((float(s), float(e)))
+            except (TypeError, ValueError):
+                src_ranges.append(None)
+        threading.Thread(
+            target=_extract_section_clips,
+            args=(job_id, video_url, src_ranges),
+            daemon=True,
+        ).start()
+
     return redirect(f"/produce/?job={job_id}")
+
+
+def _extract_section_clips(job_id, video_url, src_ranges):
+    """Pre-fill each section's media with the matching footage cut from the
+    source video, so a Producer starting from an existing video doesn't have
+    to manually re-source clips for content that's already right there.
+    Runs in its own background thread, entirely separate from narration
+    generation (run_generation_from_sections) — synchronous extraction of up
+    to 13 clips can easily take longer than a request should block for (real
+    risk of hitting gunicorn's worker timeout in production), and a failed or
+    slow extraction here must never take down narration generation with it.
+    A section left unfilled just falls back to the existing manual-upload
+    drop zone, same as the typed-script flow always required.
+    """
+    ytprod = _ytprod()
+    job = ytprod.JOBS.get(job_id)
+    if job is None:
+        return
+
+    # run_generation_from_sections populates job["sections"] almost
+    # immediately (Step 1, before the TTS call that actually takes real
+    # wall-clock time) — this just waits out that small startup window rather
+    # than assuming it's already there.
+    for _ in range(50):
+        if job.get("sections"):
+            break
+        time.sleep(0.1)
+    sections = job.get("sections") or []
+    if not sections:
+        return
+
+    job_dir = os.path.join(ytprod.OUTPUT_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    clipper = _clipper()
+    try:
+        info = clipper._resolve_stream_info(video_url)
+    except Exception as e:
+        print(f"  [producer_scout] couldn't resolve source video for clip extraction: {e}", flush=True)
+        return
+
+    for i, rng in enumerate(src_ranges):
+        if i >= len(sections) or rng is None:
+            continue
+        start, end = rng
+        if end <= start:
+            continue
+        out_file = os.path.join(job_dir, f"section_{i:03d}.mp4")
+        try:
+            clipper._extract_clip_from_info(info, start, end, out_file)
+        except Exception as e:
+            print(f"  [producer_scout] section {i} clip extraction failed: {e}", flush=True)
+            continue
+        # Same shape /upload-section writes — the assemble step (run_assembly)
+        # reads these two keys the same way regardless of how media got here.
+        sections[i]["media"] = out_file
+        sections[i]["media_ext"] = ".mp4"

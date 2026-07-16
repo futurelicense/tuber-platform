@@ -4,11 +4,13 @@
 <div class="card">
   <h2 style="margin:0 0 4px">Review before generating</h2>
   <p class="hint" style="margin:0">From <a href="{{ video_url }}" target="_blank" rel="noopener">{{ video_url }}</a>
-    — {{ chapters|length }} proposed section{{ 's' if chapters|length != 1 }}. Edit anything below, then
-    approve to start narration and media assembly.</p>
+    — {{ sections|length }} proposed section{{ 's' if sections|length != 1 }}. Edit anything below, then
+    approve to start narration — each section's media is pre-filled with the matching clip from the
+    source video (swap it out after generation if you'd rather use something else).</p>
 </div>
 
 <form method="post" action="{{ url_for('producer_scout.approve') }}">
+  <input type="hidden" name="video_url" value="{{ video_url }}">
   <div class="card" style="max-width:640px">
     <label for="title">Title</label>
     <input id="title" name="title" type="text" value="{{ title }}" required>
@@ -36,10 +38,12 @@
     </select>
   </div>
 
-  {% for c in chapters %}
+  {% for s in sections %}
   <div class="card">
-    <h2 style="margin:0 0 8px">Section {{ loop.index }} &mdash; {{ c.title }}</h2>
-    <textarea name="section_text" rows="6" style="width:100%;box-sizing:border-box;font-family:inherit">{{ c.text }}</textarea>
+    <h2 style="margin:0 0 8px">Section {{ loop.index }} &mdash; {{ s.title }}</h2>
+    <textarea name="section_text" rows="6" style="width:100%;box-sizing:border-box;font-family:inherit">{{ s.text }}</textarea>
+    <input type="hidden" name="section_src_start" value="{{ s.src_start }}">
+    <input type="hidden" name="section_src_end" value="{{ s.src_end }}">
   </div>
   {% endfor %}
 
