@@ -23,4 +23,9 @@ application = build_wsgi_app(platform_app)
 if __name__ == "__main__":
     from werkzeug.serving import run_simple
 
-    run_simple("0.0.0.0", 8000, application, use_reloader=True, use_debugger=True)
+    # threaded=True matters: ytproduction's /progress SSE stream holds its
+    # connection open for a whole generation; on a single-threaded server that
+    # blocks EVERY other request (chapters, login, everything) until the
+    # browser gives up. Production already runs gunicorn gthread with 8
+    # threads for the same reason (Dockerfile).
+    run_simple("0.0.0.0", 8000, application, use_reloader=True, use_debugger=True, threaded=True)
