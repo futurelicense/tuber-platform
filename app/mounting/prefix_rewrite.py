@@ -34,8 +34,17 @@ class PrefixRewriteMiddleware:
         self.prefix = prefix.rstrip("/")
         # Longest first so e.g. "/download_video" isn't shadowed by "/download".
         self._literals = sorted(route_whitelist, key=len, reverse=True)
-        pattern = "|".join(re.escape(lit) for lit in self._literals)
+        # Entries not ending in "/" must stop at a path-word boundary so e.g.
+        # whitelisted "/suggest" (used as "/suggest?url=...") can't swallow a
+        # platform link like "/suggestions/" baked into the same page. Entries
+        # ending in "/" are followed by a path segment (job ids etc.) and
+        # already disambiguate via the trailing slash itself.
+        pattern = "|".join(
+            re.escape(lit) + ("" if lit.endswith("/") else r"(?![A-Za-z0-9_-])")
+            for lit in self._literals
+        )
         self._body_re = re.compile(r'([\'"`])(' + pattern + r")")
+        self._loc_re = re.compile("^(" + pattern + ")")
 
     def _rewrite_bytes(self, data: bytes) -> bytes:
         text = data.decode("utf-8", errors="replace")
@@ -43,9 +52,11 @@ class PrefixRewriteMiddleware:
         return text.encode("utf-8")
 
     def _rewrite_location(self, location: str) -> str:
-        for lit in self._literals:
-            if location.startswith(lit):
-                return self.prefix + location
+        # Same boundary rule as body rewriting — a sub-app redirect to
+        # "/suggest?..." gets prefixed, a platform path like "/suggestions/"
+        # passing through does not.
+        if self._loc_re.match(location):
+            return self.prefix + location
         return location
 
     def __call__(self, environ, start_response):

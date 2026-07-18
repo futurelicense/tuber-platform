@@ -145,6 +145,38 @@ class TestPrefixRewriteMiddleware(unittest.TestCase):
         _, headers, _ = _run(mw)
         self.assertEqual(headers["Location"], "/clip/download/xyz")
 
+    def test_whitelist_entry_stops_at_path_word_boundary(self):
+        """Guards the bug caught adding platform nav strips to the vendored
+        pages: whitelisted "/suggest" (used as "/suggest?url=...") must not
+        swallow the platform's own "/suggestions/" link baked into the same
+        HTML, while "/suggest?..." itself still gets rewritten."""
+
+        class StripApp:
+            def __call__(self, environ, start_response):
+                resp = Response(
+                    b'<a href="/suggestions/">queue</a>'
+                    b'<script>fetch("/suggest?url="+u);</script>',
+                    mimetype="text/html",
+                )
+                return resp(environ, start_response)
+
+        mw = PrefixRewriteMiddleware(StripApp(), "/clip", ["/suggest"])
+        _, _, body = _run(mw)
+        text = body.decode()
+        self.assertIn('href="/suggestions/"', text)
+        self.assertIn('fetch("/clip/suggest?url="', text)
+
+    def test_location_rewrite_stops_at_path_word_boundary(self):
+        class SuggestionsRedirect:
+            def __call__(self, environ, start_response):
+                resp = Response(status=302)
+                resp.headers["Location"] = "/suggestions/"
+                return resp(environ, start_response)
+
+        mw = PrefixRewriteMiddleware(SuggestionsRedirect(), "/clip", ["/suggest"])
+        _, headers, _ = _run(mw)
+        self.assertEqual(headers["Location"], "/suggestions/")
+
     def test_does_not_rewrite_unrelated_location_like_login_redirect(self):
         """Guards the bug caught during manual testing: RoleGateMiddleware's
         redirect to /login must never be prefixed by the wrapping
