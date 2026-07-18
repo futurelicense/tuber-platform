@@ -16,6 +16,17 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
     SQLALCHEMY_DATABASE_URI = _normalized_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Supabase's pooler (like most managed Postgres) silently kills idle
+    # connections after a few minutes; SQLAlchemy's pool would then hand the
+    # dead socket to the next request, 500ing it ("server closed the
+    # connection unexpectedly") while the retry works. pre_ping validates
+    # each connection at checkout and replaces dead ones transparently;
+    # recycle retires connections before typical idle-kill windows. Both are
+    # no-ops for local SQLite.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+    }
 
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
     GEO_API_URL = os.environ.get("GEO_API_URL", "http://ip-api.com/json")
