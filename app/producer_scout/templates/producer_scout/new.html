@@ -12,6 +12,7 @@
 
 <div class="card" style="max-width:640px">
   <form method="post" action="{{ url_for('producer_scout.propose') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="video_url">YouTube URL</label>
     <input id="video_url" name="video_url" type="url" placeholder="https://www.youtube.com/watch?v=…" required autofocus>
     <div class="hint">Needs English captions on the source video — auto-generated captions work fine.</div>

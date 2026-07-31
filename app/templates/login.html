@@ -4,6 +4,7 @@
 <div class="card" style="max-width:380px;margin:60px auto">
   <h2>Log in</h2>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="email">Username or email</label>
     <input id="email" name="email" type="text" autocomplete="username" required autofocus>
     <label for="password">Password</label>

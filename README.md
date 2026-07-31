@@ -52,30 +52,14 @@ root-relative URLs both vendored apps hardcode in their HTML/JSON responses
 so they resolve under `/clip`/`/produce` instead of the platform root. See
 that file's module docstring for why this middleware exists at all.
 
-## Known pre-deployment blockers (not yet done)
+## Deploying
 
-These aren't optional polish — the platform won't work correctly on Render
-until they're resolved:
-
-1. **This repo isn't pushed to a remote yet.** Push it to GitHub (or wherever
-   Render will pull from) before setting up the Blueprint deploy.
-2. **Google OAuth client must be reissued as a "Web application" type.**
-   `vendor/youtube-clipper/credentials.json` (gitignored, not vendored) is
-   currently a Desktop/installed-app client, which Google restricts to
-   loopback redirect URIs only — it cannot accept a production HTTPS
-   redirect at all. Create a new Web application OAuth client in Google
-   Cloud Console with redirect URI
-   `https://<your-render-domain>/clip/google/callback`, and place the
-   resulting `credentials.json` in `vendor/youtube-clipper/` (as a Render
-   secret file, not committed).
-3. **TikTok's registered redirect URI** needs updating to
-   `https://<your-render-domain>/clip/tiktok/callback` in the TikTok
-   Developer Portal.
-4. **`cookies.txt`** (yt-dlp bot-detection bypass) is gitignored and not
-   vendored — provision it as a Render secret file if age-gated/bot-checked
-   video extraction needs to work in production.
-5. Set `PUBLIC_BASE_URL` in Render's env vars to the real deployed domain
-   (no trailing slash) once known.
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for the full Render + Supabase
+walkthrough — Supabase connection-string choice, Blueprint env vars, the
+Google "Web application" OAuth client reissue, secret files
+(`credentials.json`/`cookies.txt`, copied into place by
+`docker-entrypoint.sh`), first-admin bootstrap, and a post-deploy
+verification checklist.
 
 ## Explicitly deferred past Phase 1
 

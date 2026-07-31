@@ -13,6 +13,8 @@ do with the shared SECRET_KEY), rather than hand-rolling itsdangerous
 unsigning — keeps this in sync automatically if Flask's session format ever
 changes.
 """
+from urllib.parse import quote
+
 from werkzeug.wrappers import Request, Response
 
 
@@ -52,7 +54,10 @@ class RoleGateMiddleware:
             qs = environ.get("QUERY_STRING", "")
             next_url = path + (("?" + qs) if qs else "")
             resp = Response(status=302)
-            resp.headers["Location"] = f"/login?next={next_url}"
+            # quote() the whole value — an unencoded "&" inside next_url's own
+            # query string (e.g. /clip/?url=X&t=5) would otherwise truncate
+            # the next param at the first "&" and lose the rest after login.
+            resp.headers["Location"] = "/login?next=" + quote(next_url, safe="")
             return resp(environ, start_response)
 
         if user.role not in self.allowed_roles:
@@ -63,8 +68,11 @@ class RoleGateMiddleware:
             )
             return resp(environ, start_response)
 
-        ip = environ.get("HTTP_X_FORWARDED_FOR", environ.get("REMOTE_ADDR", ""))
-        ip = ip.split(",")[0].strip()
+        # ProxyFix wraps outside this middleware (dispatcher.build_wsgi_app),
+        # so REMOTE_ADDR is already the trusted client IP from Render's own
+        # X-Forwarded-For entry — reading the raw header here would trust its
+        # client-controlled first element instead.
+        ip = environ.get("REMOTE_ADDR", "").strip()
 
         log_id = None
         with self.platform_app.app_context():

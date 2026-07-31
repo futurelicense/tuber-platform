@@ -20,6 +20,7 @@
       <td>{{ c.last_checked_at.strftime('%Y-%m-%d %H:%M') if c.last_checked_at else 'never' }}</td>
       <td style="white-space:nowrap">
         <form method="post" action="{{ url_for('admin.toggle_watched_channel', channel_id=c.id) }}" style="display:inline;margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px">
             {{ 'Deactivate' if c.is_active else 'Reactivate' }}
           </button>
@@ -27,6 +28,7 @@
         <form method="post" action="{{ url_for('admin.delete_watched_channel', channel_id=c.id) }}"
               data-confirm-label="{{ c.label or c.channel_url }}" style="display:inline;margin:0"
               onsubmit="return confirm('Delete ' + this.dataset.confirmLabel + '? This also removes its discovered videos and suggestions. This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="danger" style="padding:4px 10px;font-size:12px">Delete</button>
         </form>
       </td>
@@ -37,6 +39,7 @@
   </table>
 
   <form method="post" action="{{ url_for('admin.new_watched_channel') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="flex:1;min-width:220px"><label for="channel_url">Channel URL or search query</label>
       <input id="channel_url" name="channel_url" placeholder="https://www.youtube.com/@handle or ytsearch20:topic" required></div>
     <div style="flex:1;min-width:140px"><label for="label">Label (optional)</label>

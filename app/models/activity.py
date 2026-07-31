@@ -7,7 +7,11 @@ class LoginEvent(db.Model):
     __tablename__ = "login_events"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    # Nullable: failed attempts against emails that don't match any account
+    # are recorded too (user_id None, attempted_email set) so credential
+    # stuffing is visible in the admin's logins view.
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    attempted_email = db.Column(db.String(255))
     ip_address = db.Column(db.String(64), nullable=False)
     geo_country = db.Column(db.String(120))
     geo_region = db.Column(db.String(120))

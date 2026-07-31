@@ -17,9 +17,18 @@
       <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '' }}</td>
       <td>
         {% if u.id != current_user.id %}
-        <form method="post" action="{{ url_for('admin.toggle_active', user_id=u.id) }}" style="margin:0">
+        <form method="post" action="{{ url_for('admin.toggle_active', user_id=u.id) }}" style="margin:0;display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px">
             {{ 'Deactivate' if u.is_active_flag else 'Reactivate' }}
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+              data-confirm-label="{{ u.email }}" style="margin:0;display:inline"
+              onsubmit="return confirm('Delete ' + this.dataset.confirmLabel + '? This permanently removes their account and activity history. This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary" style="padding:4px 10px;font-size:12px;color:#e05555">
+            Delete
           </button>
         </form>
         {% endif %}

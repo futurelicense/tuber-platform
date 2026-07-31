@@ -28,9 +28,11 @@
       <td><span class="pill">{{ c.platform }}</span></td>
       <td style="white-space:nowrap">
         <form method="post" action="{{ url_for('suggestions.approve', clip_id=c.id) }}" style="display:inline;margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" style="padding:5px 12px;font-size:12px">&#10003; Approve</button>
         </form>
         <form method="post" action="{{ url_for('suggestions.reject', clip_id=c.id) }}" style="display:inline;margin:0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="secondary" style="padding:5px 12px;font-size:12px">Reject</button>
         </form>
       </td>

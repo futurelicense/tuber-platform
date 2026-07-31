@@ -1,3 +1,5 @@
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 from flask import render_template, request, redirect, url_for, flash
@@ -8,12 +10,49 @@ from ..extensions import db
 from ..models import User, LoginEvent
 from ..geo import lookup_ip
 
+# In-process failed-login throttle, keyed per client IP and per attempted
+# email. Process-local state is sufficient here: production runs a single
+# gunicorn worker (Dockerfile pins --workers 1 for job-state reasons), so
+# every request sees the same dicts.
+_FAILURE_WINDOW = 900  # seconds
+_MAX_FAILURES = 10  # per IP / per email within the window
 
-def _record_login_event(user, success):
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+
+_failed_logins = defaultdict(deque)  # throttle key -> recent failure monotonic timestamps
+
+
+def _throttled(keys):
+    now = time.monotonic()
+    for key in keys:
+        attempts = _failed_logins[key]
+        while attempts and now - attempts[0] > _FAILURE_WINDOW:
+            attempts.popleft()
+        if len(attempts) >= _MAX_FAILURES:
+            return True
+    return False
+
+
+def _note_failure(keys):
+    now = time.monotonic()
+    for key in keys:
+        _failed_logins[key].append(now)
+
+
+def _client_ip():
+    # ProxyFix (see dispatcher.build_wsgi_app) has already replaced
+    # remote_addr with the client IP taken from Render's own X-Forwarded-For
+    # entry. Parsing the header here instead would trust its *first* element,
+    # which the client controls by sending its own X-Forwarded-For — letting
+    # a tuber forge the IP/location the admin dashboard shows for them.
+    return request.remote_addr or ""
+
+
+def _record_login_event(email, user, success):
+    ip = _client_ip()
     geo = lookup_ip(ip) if success else {}
     event = LoginEvent(
-        user_id=user.id,
+        user_id=user.id if user else None,
+        attempted_email=email or None,
         ip_address=ip or "unknown",
         geo_country=geo.get("country"),
         geo_region=geo.get("regionName"),
@@ -25,7 +64,7 @@ def _record_login_event(user, success):
         success=success,
     )
     db.session.add(event)
-    if success:
+    if success and user:
         user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()
 
@@ -38,18 +77,30 @@ def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
+        throttle_keys = (f"ip:{_client_ip()}", f"email:{email}")
+
+        if _throttled(throttle_keys):
+            flash("Too many failed attempts — try again in a few minutes.", "error")
+            return render_template("login.html")
+
         user = User.query.filter_by(email=email).first()
 
         if user and user.is_active and user.check_password(password):
             login_user(user)
-            _record_login_event(user, success=True)
+            _record_login_event(email, user, success=True)
             next_url = request.args.get("next")
-            if next_url and next_url.startswith("/"):
+            # Same-site paths only. "//evil.com" (and "/\evil.com", which
+            # browsers normalize to it) starts with "/" but is treated as a
+            # protocol-relative URL — an open redirect on the login page.
+            if next_url and next_url.startswith("/") and not next_url.startswith(("//", "/\\")):
                 return redirect(next_url)
             return redirect(url_for("admin.dashboard" if user.role == "admin" else "auth.home"))
 
-        if user:
-            _record_login_event(user, success=False)
+        # Recorded whether or not the email matched a real account — a
+        # credential-stuffing run against guessed emails should be visible in
+        # the admin's logins dashboard, not silently dropped.
+        _note_failure(throttle_keys)
+        _record_login_event(email, user, success=False)
         flash("Invalid email or password.", "error")
 
     return render_template("login.html")

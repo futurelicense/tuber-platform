@@ -21,6 +21,7 @@
   </table>
 
   <form method="post" action="{{ url_for('admin.new_metric') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="flex:1;min-width:140px"><label for="key">Key</label><input id="key" name="key" placeholder="clips_published" required></div>
     <div style="flex:1;min-width:140px"><label for="label">Label</label><input id="label" name="label" placeholder="Clips published" required></div>
     <div style="min-width:140px">
@@ -68,6 +69,7 @@
   </table>
 
   <form method="post" action="{{ url_for('admin.new_rule') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="flex:1;min-width:140px"><label for="name">Name</label><input id="name" name="name" placeholder="Top clipper bonus" required></div>
     <div style="min-width:160px">
       <label for="metric_id">Metric</label>

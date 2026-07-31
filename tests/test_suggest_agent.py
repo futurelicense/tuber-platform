@@ -34,6 +34,10 @@ class _TestConfig(Config):
     # tests would then share and pollute a real on-disk db between runs.
     # Passing this subclass into create_app() up front avoids all of that.
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    # These tests POST directly with the test client (no rendered form, so no
+    # csrf_token field to submit) — the race guard under test is orthogonal
+    # to CSRF anyway.
+    WTF_CSRF_ENABLED = False
 
 
 class _DbTestCase(unittest.TestCase):

@@ -12,8 +12,27 @@ def _normalized_database_uri():
     return uri
 
 
+def _secret_key():
+    # A guessable SECRET_KEY means forgeable session cookies, and the session
+    # cookie's signature is the ONLY thing RoleGateMiddleware and the admin
+    # blueprint trust — so a real deployment must never boot on the dev
+    # fallback. DATABASE_URL being set is the "this is a real deployment"
+    # signal (local dev runs on the sqlite default).
+    key = os.environ.get("SECRET_KEY", "").strip()
+    if key:
+        return key
+    if os.environ.get("DATABASE_URL"):
+        raise RuntimeError(
+            "SECRET_KEY is not set but DATABASE_URL is — refusing to start "
+            "with the insecure dev fallback key. Set SECRET_KEY in the "
+            "environment (Render: generateValue on the web service; copy the "
+            "same value to the cron service)."
+        )
+    return "dev-only-insecure-key"
+
+
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
+    SECRET_KEY = _secret_key()
     SQLALCHEMY_DATABASE_URI = _normalized_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Supabase's pooler (like most managed Postgres) silently kills idle

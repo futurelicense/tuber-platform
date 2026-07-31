@@ -10,6 +10,7 @@
 </div>
 
 <form method="post" action="{{ url_for('producer_scout.approve') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="video_url" value="{{ video_url }}">
   <div class="card" style="max-width:640px">
     <label for="title">Title</label>
