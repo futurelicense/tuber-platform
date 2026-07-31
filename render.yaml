@@ -29,7 +29,7 @@ services:
       - key: AI_KEY
         sync: false
       - key: AI_MODEL
-        value: llama-3.3-70b-versatile
+        value: llama-3.1-8b-instant
       - key: AI_ENDPOINT
         value: https://api.groq.com/openai/v1/chat/completions
       - key: HF_API_KEY
@@ -64,7 +64,7 @@ services:
       - key: AI_KEY
         sync: false
       - key: AI_MODEL
-        value: llama-3.3-70b-versatile
+        value: llama-3.1-8b-instant
       - key: AI_ENDPOINT
         value: https://api.groq.com/openai/v1/chat/completions
     # Deliberately no `disk:` — nothing in the agent's path touches

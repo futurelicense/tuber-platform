@@ -12,6 +12,7 @@ from ..models import (
     ActivityLog,
     ConnectedChannel,
     MetricDefinition,
+    MetricEvent,
     RewardRule,
     WatchedChannel,
     DiscoveredVideo,
@@ -96,6 +97,48 @@ def toggle_active(user_id):
     user.is_active_flag = not user.is_active_flag
     db.session.commit()
     flash(f"{user.email} is now {'active' if user.is_active_flag else 'inactive'}.", "success")
+    return redirect(url_for("admin.users"))
+
+
+@bp.route("/users/<int:user_id>/delete", methods=["POST"])
+def delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash("You can't delete your own account.", "error")
+        return redirect(url_for("admin.users"))
+
+    # WatchedChannel.added_by_user_id is NOT NULL — unlike the other FKs
+    # below, there's no safe value to fall back to (nulling it or
+    # reassigning it to someone else would misattribute who configured the
+    # watch). Block instead, same spirit as delete_watched_channel requiring
+    # an explicit separate action for its own dependents.
+    if WatchedChannel.query.filter_by(added_by_user_id=user.id).first():
+        flash(
+            f"Can't delete {user.email}: they added one or more watched channels. "
+            "Delete or reassign those first.",
+            "error",
+        )
+        return redirect(url_for("admin.users"))
+
+    email = user.email
+
+    # This user's own history/records — deleting the account means deleting
+    # what it did, same as delete_watched_channel taking its discovered
+    # videos/suggestions down with it.
+    LoginEvent.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    ActivityLog.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    ConnectedChannel.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    MetricEvent.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+
+    # Nullable FKs where this user was just the *actor* on someone else's
+    # row — clear the attribution rather than deleting rows that aren't
+    # this user's own data.
+    User.query.filter_by(created_by_id=user.id).update({"created_by_id": None})
+    SuggestedClip.query.filter_by(reviewed_by_id=user.id).update({"reviewed_by_id": None})
+
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"Deleted {email}.", "success")
     return redirect(url_for("admin.users"))
 
 
