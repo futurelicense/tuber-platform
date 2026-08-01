@@ -1,8 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Log in — Tuber Platform{% endblock %}
+{% block title %}Log in — MoneyTuber{% endblock %}
 {% block content %}
-<div class="card" style="max-width:380px;margin:60px auto">
-  <h2>Log in</h2>
+<div style="max-width:380px;margin:40px auto 0;text-align:center">
+  <img src="{{ url_for('static', filename='brand/logo-full.png') }}" alt="MoneyTuber — Learn. Build. Earn. Own."
+       style="width:280px;max-width:80%;margin-bottom:8px">
+</div>
+<div class="card" style="max-width:380px;margin:0 auto">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="email">Username or email</label>

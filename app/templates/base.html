@@ -3,26 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Tuber Platform{% endblock %}</title>
+<title>{% block title %}MoneyTuber{% endblock %}</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/favicon.png') }}">
 <style>
   :root{
-    --ink:#14161b;--panel:#1b1e25;--panel-2:#22262f;
-    --line:#2c3039;--line-bright:#3a3f4a;
+    /* --ink matches the logo PNGs' baked-in background (#020308) exactly,
+       so the brand images sit on the page without a visible box edge. */
+    --ink:#020308;--panel:#12141b;--panel-2:#1b1e26;
+    --line:#262a33;--line-bright:#3a3f4a;
     --text:#e9e7e1;--muted:#8b909c;--faint:#5d626d;
-    --amber:#ffb13c;--in:#56d364;--out:#f76d6d;
+    --brand:#e5111c;--brand-soft:#ff5b63;--in:#56d364;--out:#f76d6d;
     --radius:12px;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--ink);color:var(--text);
     font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
-  a{color:var(--amber);text-decoration:none}
+  a{color:var(--brand-soft);text-decoration:none}
   a:hover{text-decoration:underline}
   header{display:flex;align-items:center;gap:20px;padding:14px 24px;
     border-bottom:1px solid var(--line);background:var(--panel)}
   header h1{font-size:16px;margin:0;font-weight:700}
   nav.top a{color:var(--muted);font-size:13px;font-weight:600;padding:6px 10px;
     border-radius:8px}
-  nav.top a.active,nav.top a:hover{color:var(--amber);background:rgba(255,177,60,.1);
+  nav.top a.active,nav.top a:hover{color:#fff;background:rgba(229,17,28,.18);
     text-decoration:none}
   .spacer{flex:1}
   .whoami{font-size:12px;color:var(--faint)}
@@ -42,7 +45,7 @@
   .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;
     font-weight:600;border:1px solid var(--line-bright)}
   .pill.admin{color:#bc8cff;border-color:#5c3a8a}
-  .pill.clipper{color:var(--amber);border-color:#7a5a22}
+  .pill.clipper{color:#ffb13c;border-color:#7a5a22}
   .pill.producer{color:#4a9eff;border-color:#1e3a5c}
   .pill.ok{color:var(--in);border-color:#2a6a3a}
   .pill.off{color:var(--faint)}
@@ -50,8 +53,8 @@
   input,select,textarea{width:100%;background:var(--ink);border:1px solid var(--line-bright);
     color:var(--text);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;
     outline:none;margin-bottom:14px}
-  input:focus,select:focus,textarea:focus{border-color:var(--amber)}
-  button{background:var(--amber);color:#1a1205;border:none;border-radius:8px;
+  input:focus,select:focus,textarea:focus{border-color:var(--brand)}
+  button{background:var(--brand);color:#fff;border:none;border-radius:8px;
     padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
   button.secondary{background:none;border:1px solid var(--line-bright);color:var(--muted)}
   button.danger{background:none;border:1px solid #5c2a2a;color:var(--out)}
@@ -67,13 +70,16 @@
   .hint{color:var(--faint);font-size:12px;margin-top:-8px;margin-bottom:14px}
   h2{font-size:15px;margin:0 0 14px}
   code{background:var(--panel-2);border:1px solid var(--line);border-radius:4px;
-    padding:1px 6px;font-size:12px;color:var(--amber)}
+    padding:1px 6px;font-size:12px;color:var(--brand-soft)}
 </style>
 </head>
 <body>
 {% if current_user.is_authenticated %}
 <header>
-  <h1>&#9670; Tuber Platform</h1>
+  <h1 style="display:flex;align-items:center;gap:9px">
+    <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" style="height:24px">
+    <span>Money<span style="color:var(--brand)">Tuber</span></span>
+  </h1>
   <nav class="top">
     {% if current_user.role == 'admin' %}
     <a href="{{ url_for('admin.dashboard') }}" class="{{ 'active' if request.endpoint=='admin.dashboard' }}">Dashboard</a>

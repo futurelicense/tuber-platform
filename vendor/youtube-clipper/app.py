@@ -2173,15 +2173,16 @@ PAGE = r"""<!doctype html>
 <!-- Platform strip (vendored copy only): way back to the Tuber Platform when
      mounted at /clip/. These hrefs are platform routes, deliberately absent
      from the PrefixRewriteMiddleware whitelist so they stay root-relative. -->
-<div style="display:flex;align-items:center;gap:16px;padding:8px 20px;background:#14161b;border-bottom:1px solid #2c3039;font-family:system-ui,sans-serif;font-size:13px">
-  <a href="/" style="color:#ffb13c;text-decoration:none;font-weight:700">&#9670; Tuber Platform</a>
+<div style="display:flex;align-items:center;gap:16px;padding:8px 20px;background:#020308;border-bottom:1px solid #262a33;font-family:system-ui,sans-serif;font-size:13px">
+  <a href="/" style="display:flex;align-items:center;gap:8px;color:#e9e7e1;text-decoration:none;font-weight:700"><img src="/static/brand/mark.png" alt="" style="height:20px"><span>Money<span style="color:#e5111c">Tuber</span></span></a>
+  <span style="color:#fff;background:rgba(229,17,28,.18);padding:4px 10px;border-radius:8px;font-weight:600">Clip Studio</span>
   <a href="/suggestions/" style="color:#8b909c;text-decoration:none;font-weight:600">Suggestions</a>
   <span style="flex:1"></span>
   <a href="/logout" style="color:#8b909c;text-decoration:none;font-weight:600">&#8594; Log out</a>
 </div>
 <div class="wrap">
   <header>
-    <div class="logo"><div class="mark">▣</div><h1>Team MoneyTuber - Clipper</h1></div>
+    <div class="logo"><div class="mark">▣</div><h1>Clip Studio</h1></div>
     <span class="tag">in · out · cut</span>
   </header>
 
