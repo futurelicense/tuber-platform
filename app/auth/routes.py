@@ -2,7 +2,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 
 from . import bp
@@ -103,7 +103,11 @@ def login():
         _record_login_event(email, user, success=False)
         flash("Invalid email or password.", "error")
 
-    return render_template("login.html")
+    # no-store: a cached copy of this page carries a CSRF token from a stale
+    # session — submitting it fails even though the user did nothing wrong.
+    resp = make_response(render_template("login.html"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.route("/logout")

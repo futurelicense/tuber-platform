@@ -47,6 +47,11 @@ class Config:
         "pool_recycle": 280,
     }
 
+    # No expiry on CSRF tokens (they stay session-bound and signed) — the
+    # default 1-hour limit turned a login tab left open, or a browser-cached
+    # login page, into "Bad Request: The CSRF token has expired" on submit.
+    WTF_CSRF_TIME_LIMIT = None
+
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
     GEO_API_URL = os.environ.get("GEO_API_URL", "http://ip-api.com/json")
     CHANNEL_TOKEN_ENC_KEY = os.environ.get("CHANNEL_TOKEN_ENC_KEY", "")
