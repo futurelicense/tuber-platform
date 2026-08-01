@@ -664,6 +664,49 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
 _AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
 
+# Overflow fallback via Hugging Face's Inference Providers router. HF free
+# credits are far too small to be a workhorse, so this only fires when the
+# primary provider's rate limit is exhausted — a paid-per-token safety valve
+# for the moments Groq's TPM window is spent, keeping a tuber's request alive
+# instead of erroring. Active only when HF_API_KEY is set (and distinct from
+# AI_KEY — retrying the same account is pointless).
+_FALLBACK_AI_ENDPOINT = os.environ.get(
+    "FALLBACK_AI_ENDPOINT", "https://router.huggingface.co/v1/chat/completions")
+_FALLBACK_AI_MODEL = os.environ.get("FALLBACK_AI_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+
+
+def _fallback_ai_completion(prompt, max_tokens, temperature):
+    """One-shot completion against the fallback provider. Returns the text,
+    or None when the fallback isn't configured or fails (callers keep their
+    original error in that case)."""
+    hf_key = os.environ.get("HF_API_KEY", "").strip()
+    if not hf_key or hf_key == os.environ.get("AI_KEY", "").strip():
+        return None
+    body = json.dumps({
+        "model": _FALLBACK_AI_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }).encode()
+    req = _urllib_req.Request(
+        _FALLBACK_AI_ENDPOINT, data=body,
+        headers={
+            "Authorization": f"Bearer {hf_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; Clipper/1.0)",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with _urllib_req.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read().decode())
+        print(f"  [clipper] primary AI rate-limited — served by fallback "
+              f"({_FALLBACK_AI_MODEL})", flush=True)
+        return result["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"  [clipper] fallback AI failed too: {e}", flush=True)
+        return None
+
 _PLATFORM_CFG = {
     "TikTok": {
         "min_dur": 25, "max_dur": 55,
@@ -811,14 +854,17 @@ Return ONLY a valid JSON array, no explanation, no markdown:
             "Accept": "application/json",
         },
     )
+    content = None
     try:
         with _urllib_req.urlopen(req, timeout=90) as resp:
             result = json.loads(resp.read().decode())
+        content = result["choices"][0]["message"]["content"].strip()
     except _urllib_req.HTTPError as e:
         body_err = e.read().decode()[:300]
-        raise RuntimeError(f"AI API returned {e.code}: {body_err}")
-
-    content = result["choices"][0]["message"]["content"].strip()
+        if e.code in (413, 429):
+            content = _fallback_ai_completion(prompt, 2048, 0.3)
+        if content is None:
+            raise RuntimeError(f"AI API returned {e.code}: {body_err}")
     # Strip markdown code fences if present
     content = re.sub(r"```[a-z]*\n?", "", content).strip()
     # Extract the JSON array even if the model wraps it in extra text
@@ -906,6 +952,11 @@ def _ai_chat_completion(prompt, max_tokens, retries=3):
                 time.sleep(wait)
                 continue
             if e.code in (413, 429):
+                # Rate limit exhausted (or single request over it) — give the
+                # overflow provider one shot before failing the user's request.
+                fb = _fallback_ai_completion(prompt, max_tokens, 0.2)
+                if fb is not None:
+                    return re.sub(r"```[a-z]*\n?", "", fb).strip()
                 raise RuntimeError(
                     "This video's transcript is too long for the configured AI model's token/rate "
                     "limit. Try a shorter video, or check your AI provider's tier limits in .env."

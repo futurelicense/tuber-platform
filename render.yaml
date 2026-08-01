@@ -29,7 +29,9 @@ services:
       - key: AI_KEY
         sync: false
       - key: AI_MODEL
-        value: llama-3.1-8b-instant
+        # 12K TPM on Groq's free tier — double llama-3.1-8b-instant's 6K,
+        # and much better at the JSON-strict clip/chapter/metadata prompts.
+        value: llama-3.3-70b-versatile
       - key: AI_ENDPOINT
         value: https://api.groq.com/openai/v1/chat/completions
       - key: HF_API_KEY
@@ -64,9 +66,15 @@ services:
       - key: AI_KEY
         sync: false
       - key: AI_MODEL
-        value: llama-3.1-8b-instant
+        # Deliberately a DIFFERENT model than the web service: Groq rate
+        # limits are per-model, so the 6-hourly bulk scout spends its own
+        # quota (gpt-oss-120b: 8K TPM / 200K TPD) instead of draining the
+        # 70b budget interactive users depend on.
+        value: openai/gpt-oss-120b
       - key: AI_ENDPOINT
         value: https://api.groq.com/openai/v1/chat/completions
+      - key: HF_API_KEY
+        sync: false # same key as the web service — enables the HF overflow fallback
     # Deliberately no `disk:` — nothing in the agent's path touches
     # CLIPPER_DOWNLOAD_DIR/YTPROD_OUTPUT_DIR (channel listing and transcript
     # fetch both use skip_download/extract_flat), and Render persistent disks

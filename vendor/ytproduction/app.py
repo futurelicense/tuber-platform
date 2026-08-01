@@ -103,6 +103,28 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
         except Exception as e:
             last_err = e
             print(f"  [ytprod] Groq error (attempt {attempt+1}): {e}", flush=True)
+
+    # Primary provider exhausted — one shot at the Hugging Face router before
+    # failing the job. HF free credits are too small to be a workhorse; this
+    # is strictly an overflow valve, active only when HF_API_KEY is set.
+    hf_key = os.environ.get("HF_API_KEY", "").strip()
+    if hf_key and hf_key != ai_key:
+        fb_model = os.environ.get("FALLBACK_AI_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+        fb_endpoint = os.environ.get(
+            "FALLBACK_AI_ENDPOINT", "https://router.huggingface.co/v1/chat/completions")
+        try:
+            r = _groq_session.post(
+                fb_endpoint, json={**payload, "model": fb_model},
+                headers={"Authorization": f"Bearer {hf_key}",
+                         "User-Agent": headers["User-Agent"]},
+                timeout=120)
+            if r.status_code < 400:
+                print(f"  [ytprod] primary AI exhausted — served by fallback ({fb_model})",
+                      flush=True)
+                return r.json()["choices"][0]["message"]["content"].strip()
+            print(f"  [ytprod] fallback AI {r.status_code}: {r.text[:200]}", flush=True)
+        except Exception as e:
+            print(f"  [ytprod] fallback AI failed too: {e}", flush=True)
     raise RuntimeError(f"Groq API unreachable after 4 attempts: {last_err}")
 
 def _ai_generate_metadata(script: str, title: str):
