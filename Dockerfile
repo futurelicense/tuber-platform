@@ -30,6 +30,12 @@ ENTRYPOINT ["/app/docker-entrypoint.sh"]
 # worker wedges, so a large finite timeout never kills a long single request
 # (SSE streams, slow assemblies) but does bound total wedge time instead of
 # letting a fully-stuck worker hang forever.
+# --threads 24: every active job's SSE progress stream and every /clip/stream/
+# video preview holds a thread for its whole duration, mostly idle-waiting —
+# 8 threads meant ~6 concurrent viewers starved everyone else (login
+# included). 24 comfortably covers ~10 simultaneous users; the real work
+# (ffmpeg, TTS, yt-dlp) runs in subprocesses/background threads and is bound
+# by the instance's CPU, not by this pool.
 CMD ["gunicorn", "wsgi:application", \
-     "--workers", "1", "--threads", "8", "--worker-class", "gthread", \
+     "--workers", "1", "--threads", "24", "--worker-class", "gthread", \
      "--timeout", "3600", "--bind", "0.0.0.0:8000"]
