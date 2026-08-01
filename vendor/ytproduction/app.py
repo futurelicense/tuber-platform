@@ -86,6 +86,15 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
         try:
             r = _groq_session.post(_AI_ENDPOINT, json=payload,
                                    headers=headers, timeout=90)
+            if r.status_code in (413, 429):
+                # Free-tier tokens-per-minute exhaustion — e.g. this call
+                # landing right after the chapter calls spent the window.
+                # Wait for the minute to refill instead of failing the job.
+                last_err = RuntimeError(f"Groq API {r.status_code}: {r.text[:300]}")
+                print(f"  [ytprod] Groq rate-limited ({r.status_code}); waiting for the "
+                      f"TPM window to refill…", flush=True)
+                time.sleep(20)
+                continue
             if r.status_code >= 400:
                 raise RuntimeError(f"Groq API {r.status_code}: {r.text[:300]}")
             return r.json()["choices"][0]["message"]["content"].strip()
@@ -103,7 +112,15 @@ def _ai_generate_metadata(script: str, title: str):
     analysis_prompt). A trimmed version of that same prompt, minus the
     "sections" key.
     """
-    prompt = f"""Based on this video script, generate YouTube metadata.
+    # Title/description/hashtags only need the gist, not the whole script —
+    # sending it all blew Groq's free-tier 6K tokens-per-minute cap on long
+    # videos (413 "Request too large"). Head + tail keeps the intro (what the
+    # video is about) and the close (usually the call-to-action) within the
+    # same per-request budget the Clipper's chapter chunking uses.
+    if len(script) > 6000:
+        script = script[:4800] + "\n[…]\n" + script[-1200:]
+
+    prompt = f"""Based on this video script (excerpted if long), generate YouTube metadata.
 
 Return ONLY a JSON object:
 {{
