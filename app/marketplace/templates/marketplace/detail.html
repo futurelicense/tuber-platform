@@ -9,8 +9,8 @@
   {% if listing.niche %}<span class="hint" style="margin:8px 0 0">{{ listing.niche }}</span>{% endif %}
   {% if listing.description %}<p style="margin:14px 0">{{ listing.description }}</p>{% endif %}
   <ul style="color:var(--muted);font-size:13.5px;line-height:1.8;padding-left:18px">
-    {% if listing.subscriber_count %}<li>{{ listing.subscriber_count }} subscribers</li>{% endif %}
-    {% if listing.total_views %}<li>{{ listing.total_views }} total views</li>{% endif %}
+    {% if listing.subscriber_count %}<li>{{ '{:,}'.format(listing.subscriber_count) }} subscribers</li>{% endif %}
+    {% if listing.total_views %}<li>{{ '{:,}'.format(listing.total_views) }} total views</li>{% endif %}
     {% if listing.stats_note %}<li>{{ listing.stats_note }}</li>{% endif %}
   </ul>
 

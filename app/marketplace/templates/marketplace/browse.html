@@ -13,7 +13,7 @@
       <span class="pill {{ 'ok' if listing.monetization_status == 'monetized' else 'off' }}">
         {{ listing.monetization_status }}
       </span>
-      {% if listing.subscriber_count %}<span class="hint" style="margin:0">{{ listing.subscriber_count }} subscribers</span>{% endif %}
+      {% if listing.subscriber_count %}<span class="hint" style="margin:0">{{ '{:,}'.format(listing.subscriber_count) }} subscribers</span>{% endif %}
       <span style="font-size:20px;font-weight:800">{{ listing.currency }} {{ '%.2f' | format(listing.price) }}</span>
     </a>
     {% else %}
