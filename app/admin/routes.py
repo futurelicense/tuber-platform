@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
@@ -17,7 +18,11 @@ from ..models import (
     WatchedChannel,
     DiscoveredVideo,
     SuggestedClip,
+    Prospect,
+    Commission,
+    AffiliateProgramSettings,
 )
+from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
 
 
 @bp.before_request
@@ -57,7 +62,7 @@ def new_user():
         role = request.form.get("role")
         display_name = (request.form.get("display_name") or "").strip()
 
-        if role not in ("clipper", "producer", "admin"):
+        if role not in ("clipper", "producer", "admin", "affiliate"):
             flash("Invalid role.", "error")
             return render_template("admin/new_user.html")
         if not email:
@@ -74,6 +79,10 @@ def new_user():
             display_name=display_name or None,
             created_by_id=current_user.id,
         )
+        if role == "affiliate":
+            from ..affiliate.codes import generate_referral_code
+
+            user.referral_code = generate_referral_code()
         user.set_password(temp_password)
         db.session.add(user)
         db.session.commit()
@@ -308,3 +317,148 @@ def delete_watched_channel(channel_id):
     db.session.commit()
     flash(f"Deleted {label} and its discovered videos/suggestions.", "success")
     return redirect(url_for("admin.watched_channels"))
+
+
+def _commission_totals(affiliate_id):
+    commissions = Commission.query.filter_by(affiliate_id=affiliate_id).all()
+    return {
+        status: sum((c.amount for c in commissions if c.status == status), start=0)
+        for status in ("pending", "approved", "paid")
+    }
+
+
+@bp.route("/affiliates")
+def affiliates():
+    affiliate_users = User.query.filter_by(role="affiliate").order_by(User.created_at.desc()).all()
+    rows = [
+        {"user": u, "prospect_count": Prospect.query.filter_by(affiliate_id=u.id).count(),
+         "totals": _commission_totals(u.id)}
+        for u in affiliate_users
+    ]
+    settings = AffiliateProgramSettings.get()
+    direct_prospects = (
+        Prospect.query.filter_by(affiliate_id=None).order_by(Prospect.created_at.desc()).all()
+    )
+    return render_template(
+        "admin/affiliates.html", rows=rows, settings=settings, direct_prospects=direct_prospects
+    )
+
+
+@bp.route("/affiliates/settings", methods=["POST"])
+def update_affiliate_settings():
+    rate = request.form.get("default_commission_rate_percent", type=float)
+    if rate is None or rate < 0:
+        flash("Enter a valid default commission rate.", "error")
+        return redirect(url_for("admin.affiliates"))
+    settings = AffiliateProgramSettings.get()
+    settings.default_commission_rate_percent = rate
+    db.session.commit()
+    flash(f"Default commission rate set to {rate}%.", "success")
+    return redirect(url_for("admin.affiliates"))
+
+
+@bp.route("/affiliates/<int:user_id>")
+def affiliate_detail(user_id):
+    affiliate = User.query.filter_by(id=user_id, role="affiliate").first_or_404()
+    prospects = (
+        Prospect.query.filter_by(affiliate_id=affiliate.id)
+        .order_by(Prospect.created_at.desc())
+        .all()
+    )
+    commissions = (
+        Commission.query.filter_by(affiliate_id=affiliate.id)
+        .order_by(Commission.created_at.desc())
+        .all()
+    )
+    effective_rate = (
+        affiliate.commission_rate_percent
+        or AffiliateProgramSettings.get().default_commission_rate_percent
+    )
+    return render_template(
+        "admin/affiliate_detail.html",
+        affiliate=affiliate,
+        prospects=prospects,
+        commissions=commissions,
+        effective_rate=effective_rate,
+        prospect_statuses=PROSPECT_STATUSES,
+        commission_statuses=COMMISSION_STATUSES,
+    )
+
+
+@bp.route("/affiliates/<int:user_id>/rate", methods=["POST"])
+def set_affiliate_rate(user_id):
+    affiliate = User.query.filter_by(id=user_id, role="affiliate").first_or_404()
+    raw = request.form.get("commission_rate_percent")
+    affiliate.commission_rate_percent = float(raw) if raw not in (None, "") else None
+    db.session.commit()
+    flash(f"Commission rate override updated for {affiliate.email}.", "success")
+    return redirect(url_for("admin.affiliate_detail", user_id=affiliate.id))
+
+
+@bp.route("/affiliates/<int:user_id>/commissions/new", methods=["POST"])
+def new_commission(user_id):
+    affiliate = User.query.filter_by(id=user_id, role="affiliate").first_or_404()
+    amount = request.form.get("amount", type=float)
+    prospect_id = request.form.get("prospect_id", type=int) or None
+    note = (request.form.get("note") or "").strip()
+
+    if not amount or amount <= 0:
+        flash("A positive commission amount is required.", "error")
+        return redirect(url_for("admin.affiliate_detail", user_id=affiliate.id))
+
+    rate = (
+        affiliate.commission_rate_percent
+        or AffiliateProgramSettings.get().default_commission_rate_percent
+    )
+    db.session.add(
+        Commission(
+            affiliate_id=affiliate.id,
+            prospect_id=prospect_id,
+            amount=amount,
+            rate_percent_snapshot=rate,
+            note=note or None,
+            created_by_id=current_user.id,
+        )
+    )
+    db.session.commit()
+    flash(f"Commission of ${amount:.2f} created for {affiliate.email}.", "success")
+    return redirect(url_for("admin.affiliate_detail", user_id=affiliate.id))
+
+
+@bp.route("/commissions/<int:commission_id>/status", methods=["POST"])
+def update_commission_status(commission_id):
+    commission = Commission.query.get_or_404(commission_id)
+    new_status = request.form.get("status")
+    if new_status not in COMMISSION_STATUSES:
+        flash("Invalid commission status.", "error")
+        return redirect(url_for("admin.affiliate_detail", user_id=commission.affiliate_id))
+
+    commission.status = new_status
+    if new_status == "approved" and commission.approved_at is None:
+        commission.approved_at = datetime.now(timezone.utc)
+    if new_status == "paid" and commission.paid_at is None:
+        commission.paid_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash(f"Commission #{commission.id} marked {new_status}.", "success")
+    return redirect(url_for("admin.affiliate_detail", user_id=commission.affiliate_id))
+
+
+def _prospect_redirect(prospect):
+    # Unattributed prospects (submitted via the homepage's /interest, no
+    # referral code) have no affiliate detail page to return to.
+    if prospect.affiliate_id is None:
+        return redirect(url_for("admin.affiliates"))
+    return redirect(url_for("admin.affiliate_detail", user_id=prospect.affiliate_id))
+
+
+@bp.route("/prospects/<int:prospect_id>/status", methods=["POST"])
+def update_prospect_status(prospect_id):
+    prospect = Prospect.query.get_or_404(prospect_id)
+    new_status = request.form.get("status")
+    if new_status not in PROSPECT_STATUSES:
+        flash("Invalid prospect status.", "error")
+        return _prospect_redirect(prospect)
+    prospect.status = new_status
+    db.session.commit()
+    flash(f"Prospect '{prospect.name}' marked {new_status}.", "success")
+    return _prospect_redirect(prospect)

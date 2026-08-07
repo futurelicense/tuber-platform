@@ -3,6 +3,7 @@ from .activity import LoginEvent, ActivityLog
 from .channel import ConnectedChannel
 from .rewards import MetricDefinition, MetricEvent, RewardRule
 from .agent import WatchedChannel, DiscoveredVideo, SuggestedClip
+from .affiliate import Prospect, Commission, AffiliateProgramSettings
 
 __all__ = [
     "User",
@@ -15,4 +16,7 @@ __all__ = [
     "WatchedChannel",
     "DiscoveredVideo",
     "SuggestedClip",
+    "Prospect",
+    "Commission",
+    "AffiliateProgramSettings",
 ]

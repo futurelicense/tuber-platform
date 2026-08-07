@@ -1,0 +1,30 @@
+{% extends "marketing_base.html" %}
+{% block title %}Talk to MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:40px auto">
+  <h2 style="margin-top:0">
+    {% if affiliate.display_name %}{{ affiliate.display_name }} sent you to MoneyTuber{% else %}You were referred to MoneyTuber{% endif %}
+  </h2>
+  <p class="hint">Tell us what you're after and we'll reach out. No payment happens here.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="name">Your name</label>
+    <input id="name" name="name" type="text" required autofocus>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone (optional)</label>
+    <input id="phone" name="phone" type="tel">
+    <label for="interest_type">What are you interested in?</label>
+    <select id="interest_type" name="interest_type" required>
+      <option value="">Choose one</option>
+      <option value="grow_existing_channel">Growing my existing channel</option>
+      <option value="grow_from_scratch">Growing a channel from scratch</option>
+      <option value="buy_channel">Buying a monetized/unmonetized channel</option>
+      <option value="master_class">The 0&rarr;1k Master Class</option>
+    </select>
+    <label for="message">Anything else? (optional)</label>
+    <textarea id="message" name="message" rows="3"></textarea>
+    <button type="submit" style="width:100%">Submit</button>
+  </form>
+</div>
+{% endblock %}

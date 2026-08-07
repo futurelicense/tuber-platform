@@ -118,9 +118,11 @@ def logout():
 
 
 @bp.route("/")
-@login_required
 def home():
-    """Landing page for non-admin tubers: sends them straight to their tool."""
+    """Public marketing homepage for anonymous visitors; sends everyone
+    already signed in straight to their tool."""
+    if not current_user.is_authenticated:
+        return render_template("home.html")
     if current_user.role == "admin":
         return redirect(url_for("admin.dashboard"))
     if current_user.role == "clipper":
@@ -131,4 +133,6 @@ def home():
         # Video-to-sections is their entry — it links into /produce/ after
         # approval, and the nav offers a plain Produce link too.
         return redirect(url_for("producer_scout.new"))
+    if current_user.role == "affiliate":
+        return redirect(url_for("affiliate.dashboard"))
     return redirect(url_for("auth.login"))

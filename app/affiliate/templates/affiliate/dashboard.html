@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Affiliate dashboard — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2>Your referral link</h2>
+  <p class="hint">Share this with prospects — anyone who submits their info through it is tracked
+    as yours.</p>
+  <input type="text" value="{{ referral_url }}" readonly onclick="this.select()"
+         style="margin-bottom:0;font-family:monospace">
+</div>
+
+<div class="grid" style="margin-bottom:18px">
+  <div class="stat"><div class="n">${{ '%.2f' | format(totals.pending) }}</div><div class="l">Pending commission</div></div>
+  <div class="stat"><div class="n">${{ '%.2f' | format(totals.approved) }}</div><div class="l">Approved commission</div></div>
+  <div class="stat"><div class="n">${{ '%.2f' | format(totals.paid) }}</div><div class="l">Paid out</div></div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2>Your prospects</h2>
+  <table>
+    <tr><th>Name</th><th>Email</th><th>Interested in</th><th>Status</th><th>Referred</th></tr>
+    {% for p in prospects %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ p.email }}</td>
+      <td>{{ p.interest_type.replace('_', ' ') }}</td>
+      <td><span class="pill {{ 'ok' if p.status == 'converted' else 'off' }}">{{ p.status }}</span></td>
+      <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No referrals yet — share your link above.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Your commissions</h2>
+  <table>
+    <tr><th>Amount</th><th>Rate</th><th>Status</th><th>Note</th><th>Created</th></tr>
+    {% for c in commissions %}
+    <tr>
+      <td>${{ '%.2f' | format(c.amount) }}</td>
+      <td>{{ c.rate_percent_snapshot }}%</td>
+      <td><span class="pill {{ 'ok' if c.status == 'paid' else 'off' }}">{{ c.status }}</span></td>
+      <td>{{ c.note or '—' }}</td>
+      <td>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No commissions yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

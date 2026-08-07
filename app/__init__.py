@@ -26,11 +26,19 @@ def create_app(config_class=Config):
     from .admin import bp as admin_bp
     from .suggestions import bp as suggestions_bp
     from .producer_scout import bp as producer_scout_bp
+    from .affiliate import bp as affiliate_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(suggestions_bp)
     app.register_blueprint(producer_scout_bp)
+    app.register_blueprint(affiliate_bp)
+
+    @app.context_processor
+    def inject_current_year():
+        from datetime import datetime, timezone
+
+        return {"current_year": datetime.now(timezone.utc).year}
 
     @app.route("/healthz")
     def healthz():

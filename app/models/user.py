@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from ..extensions import db
 
-ROLES = ("admin", "clipper", "producer")
+ROLES = ("admin", "clipper", "producer", "affiliate")
 
 
 class User(UserMixin, db.Model):
@@ -20,9 +20,12 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     last_login_at = db.Column(db.DateTime(timezone=True))
+    # affiliate-role-only fields; null and unused for admin/clipper/producer.
+    referral_code = db.Column(db.String(12), unique=True, index=True)
+    commission_rate_percent = db.Column(db.Numeric(5, 2))
 
     __table_args__ = (
-        db.CheckConstraint("role in ('admin','clipper','producer')", name="ck_users_role"),
+        db.CheckConstraint("role in ('admin','clipper','producer','affiliate')", name="ck_users_role"),
     )
 
     def set_password(self, raw_password):

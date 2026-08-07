@@ -14,6 +14,7 @@
     <input id="password" name="password" type="password" autocomplete="current-password" required>
     <button type="submit" style="width:100%">Log in</button>
   </form>
-  <div class="hint" style="margin-top:14px">No public signup — ask your admin for an account.</div>
+  <div class="hint" style="margin-top:14px">Squad accounts: ask your admin. Want to earn commission
+    referring people to MoneyTuber? <a href="{{ url_for('affiliate.signup') }}">Become an affiliate</a>.</div>
 </div>
 {% endblock %}

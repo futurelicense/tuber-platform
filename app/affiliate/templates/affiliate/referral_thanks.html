@@ -1,0 +1,10 @@
+{% extends "marketing_base.html" %}
+{% block title %}Thanks — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
+  <h2 style="margin-top:0">Thanks — we've got it.</h2>
+  <p class="hint">Someone from MoneyTuber will reach out shortly. In the meantime, feel free to
+    look around.</p>
+  <a href="{{ url_for('auth.home') }}" class="btn">Back to MoneyTuber</a>
+</div>
+{% endblock %}

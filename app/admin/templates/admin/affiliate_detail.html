@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ affiliate.email }} — Affiliate — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2>{{ affiliate.display_name or affiliate.email }}</h2>
+  <p class="hint">{{ affiliate.email }} &middot; referral code <code>{{ affiliate.referral_code }}</code>
+    &middot; effective rate {{ effective_rate }}%</p>
+  <form method="post" action="{{ url_for('admin.set_affiliate_rate', user_id=affiliate.id) }}"
+        style="display:flex;gap:12px;align-items:flex-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="max-width:200px">
+      <label for="commission_rate_percent">Rate override (%, blank = default)</label>
+      <input id="commission_rate_percent" name="commission_rate_percent" type="number" step="0.01" min="0"
+             value="{{ affiliate.commission_rate_percent if affiliate.commission_rate_percent is not none else '' }}">
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Set rate</button></div>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2>Prospects</h2>
+  <table>
+    <tr><th>Name</th><th>Email</th><th>Interested in</th><th>Status</th><th>When</th></tr>
+    {% for p in prospects %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ p.email }}</td>
+      <td>{{ p.interest_type.replace('_', ' ') }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.update_prospect_status', prospect_id=p.id) }}" style="display:inline-flex">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="status" onchange="this.form.submit()" style="margin-bottom:0;width:auto">
+            {% for s in prospect_statuses %}
+            <option value="{{ s }}" {{ 'selected' if p.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+      <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No prospects yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Commissions</h2>
+  <table style="margin-bottom:18px">
+    <tr><th>Amount</th><th>Rate</th><th>Status</th><th>Note</th><th>When</th><th></th></tr>
+    {% for c in commissions %}
+    <tr>
+      <td>${{ '%.2f' | format(c.amount) }}</td>
+      <td>{{ c.rate_percent_snapshot }}%</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.update_commission_status', commission_id=c.id) }}" style="display:inline-flex">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="status" onchange="this.form.submit()" style="margin-bottom:0;width:auto">
+            {% for s in commission_statuses %}
+            <option value="{{ s }}" {{ 'selected' if c.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+      <td>{{ c.note or '—' }}</td>
+      <td>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '' }}</td>
+      <td>{{ c.prospect.name if c.prospect else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">No commissions yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('admin.new_commission', user_id=affiliate.id) }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="min-width:140px"><label for="amount">Amount ($)</label><input id="amount" name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div style="min-width:160px">
+      <label for="prospect_id">From prospect (optional)</label>
+      <select id="prospect_id" name="prospect_id">
+        <option value="">—</option>
+        {% for p in prospects %}
+        <option value="{{ p.id }}">{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:160px"><label for="note">Note</label><input id="note" name="note"></div>
+    <div><button type="submit" style="margin-bottom:14px">Add commission</button></div>
+  </form>
+</div>
+{% endblock %}

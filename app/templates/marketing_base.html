@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}MoneyTuber — Grow, Monetize, Get Paid{% endblock %}</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/favicon.png') }}">
+<style>
+  /* Brand tokens copied from app/templates/base.html's :root block —
+     kept as a standalone copy (not a shared include) so editing the
+     internal dashboard layout can never accidentally reshape this public
+     page, or vice versa. */
+  :root{
+    --ink:#020308;--panel:#12141b;--panel-2:#1b1e26;
+    --line:#262a33;--line-bright:#3a3f4a;
+    --text:#e9e7e1;--muted:#8b909c;--faint:#5d626d;
+    --brand:#e5111c;--brand-soft:#ff5b63;--in:#56d364;--out:#f76d6d;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);
+    font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+  a{color:var(--brand-soft);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .mkt-header{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 28px;border-bottom:1px solid var(--line)}
+  .mkt-header nav{display:flex;gap:10px;align-items:center}
+  .mkt-header nav a{color:var(--muted);font-size:13px;font-weight:600;
+    padding:8px 14px;border-radius:8px}
+  .mkt-header nav a:hover{color:#fff;background:rgba(229,17,28,.18);text-decoration:none}
+  .mkt-header nav a.cta{background:var(--brand);color:#fff}
+  .mkt-header nav a.cta:hover{background:var(--brand-soft)}
+  main{max-width:1100px;margin:0 auto;padding:0 24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+  .pill{display:inline-block;padding:3px 11px;border-radius:20px;font-size:11px;
+    font-weight:700;letter-spacing:.03em;text-transform:uppercase;border:1px solid var(--line-bright);
+    color:var(--muted)}
+  .pill.soon{color:#ffb13c;border-color:#7a5a22}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
+  input,select,textarea{width:100%;background:var(--ink);border:1px solid var(--line-bright);
+    color:var(--text);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;
+    outline:none;margin-bottom:14px}
+  input:focus,select:focus,textarea:focus{border-color:var(--brand)}
+  button,.btn{background:var(--brand);color:#fff;border:none;border-radius:8px;
+    padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;
+    display:inline-block}
+  button:hover,.btn:hover{background:var(--brand-soft);text-decoration:none}
+  button.secondary,.btn.secondary{background:none;border:1px solid var(--line-bright);color:var(--text)}
+  .flash{padding:10px 14px;border-radius:8px;margin:16px 0;font-size:13px;max-width:1100px}
+  .flash.error{background:rgba(247,109,109,.1);border:1px solid rgba(247,109,109,.4);color:#ffb4b4}
+  .flash.success{background:rgba(86,211,100,.1);border:1px solid rgba(86,211,100,.4);color:var(--in)}
+  .hint{color:var(--faint);font-size:12px;margin-top:-8px;margin-bottom:14px}
+  footer{margin-top:60px;padding:24px;text-align:center;color:var(--faint);
+    font-size:12px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header class="mkt-header">
+  <a href="{{ url_for('auth.home') }}" style="display:flex;align-items:center;gap:9px">
+    <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" style="height:24px">
+    <span style="font-weight:700;font-size:16px">Money<span style="color:var(--brand)">Tuber</span></span>
+  </a>
+  <nav>
+    <a href="{{ url_for('affiliate.signup') }}" class="cta">Become an affiliate</a>
+    <a href="{{ url_for('auth.login') }}">Log in</a>
+  </nav>
+</header>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+  <div class="flash {{ category }}" style="margin-left:auto;margin-right:auto">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>&copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.</footer>
+</body>
+</html>

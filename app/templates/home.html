@@ -1,0 +1,85 @@
+{% extends "marketing_base.html" %}
+{% block title %}MoneyTuber — Digital Real Estate for YouTube{% endblock %}
+{% block content %}
+<style>
+  .hero{padding:70px 0 50px;text-align:center}
+  .hero h1{font-size:38px;line-height:1.15;margin:0 0 16px;font-weight:800}
+  .hero h1 .accent{color:var(--brand)}
+  .hero p{color:var(--muted);font-size:17px;max-width:620px;margin:0 auto 28px;line-height:1.55}
+  .hero .ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .pillars{margin:50px 0}
+  .pillars h2{text-align:center;font-size:22px;margin-bottom:6px}
+  .pillars .sub{text-align:center;color:var(--muted);font-size:14px;margin-bottom:28px}
+  .pillar{display:flex;flex-direction:column;gap:10px}
+  .pillar h3{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
+  .pillar p{color:var(--muted);font-size:13.5px;line-height:1.5;margin:0;flex:1}
+  .band{background:linear-gradient(135deg,rgba(229,17,28,.15),rgba(229,17,28,.03));
+    border:1px solid var(--line);border-radius:var(--radius);padding:36px;margin:50px 0;
+    display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .band h2{margin:0 0 6px;font-size:22px}
+  .band p{color:var(--muted);margin:0;max-width:480px;font-size:14px;line-height:1.5}
+</style>
+
+<div class="hero">
+  <h1>Turn YouTube into <span class="accent">digital real estate</span>.</h1>
+  <p>MoneyTuber trains squads of clippers and producers to grow and monetize YouTube channels —
+    for clients, and for you. Grow from scratch, scale what you already have, or own a channel
+    outright.</p>
+  <div class="ctas">
+    <a href="#pillars" class="btn">See what we offer</a>
+    <a href="{{ url_for('affiliate.signup') }}" class="btn secondary">Become an affiliate</a>
+  </div>
+</div>
+
+<div class="pillars" id="pillars">
+  <h2>Three ways in</h2>
+  <p class="sub">Whichever fits where you are today.</p>
+  <div class="grid">
+    <div class="card pillar">
+      <h3>Grow &amp; Monetize</h3>
+      <p>Already have a channel, or starting from zero? Our trained clipper and producer squads
+        run the day-to-day work of getting you monetized and growing past it.</p>
+      <form method="post" action="{{ url_for('affiliate.interest') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="interest_type" value="grow_existing_channel">
+        <input name="name" placeholder="Your name" required>
+        <input name="email" type="email" placeholder="Email" required>
+        <button type="submit" style="width:100%">Talk to us</button>
+      </form>
+    </div>
+    <div class="card pillar">
+      <h3>Buy a Channel <span class="pill soon">Coming soon</span></h3>
+      <p>Monetized and unmonetized YouTube channels, vetted and ready to hand off. No storefront
+        yet — join the list and we'll reach out when it opens.</p>
+      <form method="post" action="{{ url_for('affiliate.interest') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="interest_type" value="buy_channel">
+        <input name="name" placeholder="Your name" required>
+        <input name="email" type="email" placeholder="Email" required>
+        <button type="submit" style="width:100%">Join the waitlist</button>
+      </form>
+    </div>
+    <div class="card pillar">
+      <h3>0&rarr;1k Master Class <span class="pill soon">Coming soon</span></h3>
+      <p>Learn YouTube as a creator — niche finding, scripting, faceless content, SEO, publishing.
+        Everything it takes to go from 0 to 1,000 subscribers in 30 days.</p>
+      <form method="post" action="{{ url_for('affiliate.interest') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="interest_type" value="master_class">
+        <input name="name" placeholder="Your name" required>
+        <input name="email" type="email" placeholder="Email" required>
+        <button type="submit" style="width:100%">Join the waitlist</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="band">
+  <div>
+    <h2>Earn by sending us people.</h2>
+    <p>Sign up, get your own referral link, and earn a commission on every prospect who converts —
+      whether they're buying a channel, joining the Master Class, or growing with us.</p>
+  </div>
+  <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate &rarr;</a>
+</div>
+{% endblock %}

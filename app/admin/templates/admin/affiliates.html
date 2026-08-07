@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Affiliates — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2>Default commission rate</h2>
+  <p class="hint">Applies to any affiliate without a per-affiliate override.</p>
+  <form method="post" action="{{ url_for('admin.update_affiliate_settings') }}"
+        style="display:flex;gap:12px;align-items:flex-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="max-width:160px">
+      <label for="default_commission_rate_percent">Rate (%)</label>
+      <input id="default_commission_rate_percent" name="default_commission_rate_percent"
+             type="number" step="0.01" min="0" value="{{ settings.default_commission_rate_percent }}" required>
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Update</button></div>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2>Affiliates</h2>
+  <table>
+    <tr><th>Affiliate</th><th>Referral code</th><th>Prospects</th><th>Pending</th><th>Approved</th><th>Paid</th><th></th></tr>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.user.display_name or row.user.email }}</td>
+      <td><code>{{ row.user.referral_code }}</code></td>
+      <td>{{ row.prospect_count }}</td>
+      <td>${{ '%.2f' | format(row.totals.pending) }}</td>
+      <td>${{ '%.2f' | format(row.totals.approved) }}</td>
+      <td>${{ '%.2f' | format(row.totals.paid) }}</td>
+      <td><a href="{{ url_for('admin.affiliate_detail', user_id=row.user.id) }}">View &rarr;</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="color:var(--faint)">No affiliates yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Direct inquiries</h2>
+  <p class="hint">Submitted via the public homepage, not attributed to any affiliate.</p>
+  <table>
+    <tr><th>Name</th><th>Email</th><th>Interested in</th><th>Status</th><th>When</th></tr>
+    {% for p in direct_prospects %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ p.email }}</td>
+      <td>{{ p.interest_type.replace('_', ' ') }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.update_prospect_status', prospect_id=p.id) }}" style="display:inline-flex;gap:6px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="status" onchange="this.form.submit()" style="margin-bottom:0;width:auto">
+            {% for s in ('new', 'contacted', 'converted', 'lost') %}
+            <option value="{{ s }}" {{ 'selected' if p.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+      <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No direct inquiries yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

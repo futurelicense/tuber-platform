@@ -5,11 +5,20 @@ silently as a broken button rather than a build error. These tests exercise
 canned Response bodies representative of what Youtube-Clipper/ytproduction
 actually emit.
 """
+import os
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Importing app.mounting.* still imports the app package first, which
+# evaluates Config's class body — same DATABASE_URL-implies-real-deployment
+# guards as test_suggest_agent.py, so these need setting here too.
+os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("CHANNEL_TOKEN_ENC_KEY", "test-channel-token-enc-key")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8000")
 
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Response
