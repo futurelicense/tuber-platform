@@ -7,7 +7,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 
 from . import bp
 from ..extensions import db
-from ..models import User, LoginEvent
+from ..models import User, LoginEvent, MasterClassSettings
 from ..geo import lookup_ip
 
 # In-process failed-login throttle, keyed per client IP and per attempted
@@ -122,7 +122,9 @@ def home():
     """Public marketing homepage for anonymous visitors; sends everyone
     already signed in straight to their tool."""
     if not current_user.is_authenticated:
-        return render_template("home.html")
+        return render_template(
+            "home.html", master_class_open=MasterClassSettings.get().is_open_for_enrollment
+        )
     if current_user.role == "admin":
         return redirect(url_for("admin.dashboard"))
     if current_user.role == "clipper":

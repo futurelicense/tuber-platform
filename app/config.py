@@ -50,6 +50,23 @@ def _channel_token_enc_key():
     )
 
 
+def _paystack_secret_key():
+    # Master Class checkout (initializing/verifying transactions) and
+    # webhook signature verification both need this. Same "DATABASE_URL
+    # means real deployment" rule as SECRET_KEY/CHANNEL_TOKEN_ENC_KEY:
+    # refuse to boot rather than silently run with payments broken or an
+    # unverifiable webhook endpoint.
+    key = os.environ.get("PAYSTACK_SECRET_KEY", "").strip()
+    if key or not os.environ.get("DATABASE_URL"):
+        return key
+    raise RuntimeError(
+        "PAYSTACK_SECRET_KEY is not set but DATABASE_URL is — refusing to "
+        "start without it, since the Master Class checkout and webhook "
+        "signature verification both require it. Set PAYSTACK_SECRET_KEY "
+        "in the environment."
+    )
+
+
 class Config:
     SECRET_KEY = _secret_key()
     SQLALCHEMY_DATABASE_URI = _normalized_database_uri()
@@ -74,6 +91,8 @@ class Config:
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
     GEO_API_URL = os.environ.get("GEO_API_URL", "http://ip-api.com/json")
     CHANNEL_TOKEN_ENC_KEY = _channel_token_enc_key()
+    PAYSTACK_SECRET_KEY = _paystack_secret_key()
+    PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Master Class — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2>Settings</h2>
+  <form method="post" action="{{ url_for('admin.update_master_class_settings') }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="min-width:140px">
+      <label for="price_amount">Price</label>
+      <input id="price_amount" name="price_amount" type="number" step="0.01" min="0.01"
+             value="{{ settings.price_amount }}" required>
+    </div>
+    <div style="min-width:100px">
+      <label for="currency">Currency</label>
+      <input id="currency" name="currency" maxlength="3" value="{{ settings.currency }}" required>
+    </div>
+    <div>
+      <label for="is_open_for_enrollment">Open for enrollment</label>
+      <input id="is_open_for_enrollment" name="is_open_for_enrollment" type="checkbox"
+             style="width:auto;margin-bottom:14px" {{ 'checked' if settings.is_open_for_enrollment }}>
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Update</button></div>
+  </form>
+  <p class="hint">Enrollment stays closed until this is checked — a stale shared link won't let
+    anyone attempt checkout while it's off.</p>
+</div>
+
+<div class="card">
+  <h2>Enrollments</h2>
+  <table>
+    <tr><th>Buyer</th><th>Amount</th><th>Affiliate</th><th>Status</th><th>When</th><th></th></tr>
+    {% for e in enrollments %}
+    <tr>
+      <td>{{ e.buyer_name }}<br><span class="hint" style="margin:0">{{ e.buyer_email }}</span></td>
+      <td>{{ e.currency }} {{ '%.2f' | format(e.amount) }}</td>
+      <td>
+        {% if e.affiliate %}
+        <a href="{{ url_for('admin.affiliate_detail', user_id=e.affiliate.id) }}">{{ e.affiliate.display_name or e.affiliate.email }}</a>
+        {% else %}—{% endif %}
+      </td>
+      <td><span class="pill {{ 'ok' if e.status == 'paid' else 'off' }}">{{ e.status }}</span></td>
+      <td>{{ e.created_at.strftime('%Y-%m-%d') if e.created_at else '' }}</td>
+      <td>
+        {% if e.status == 'paid' %}
+        <form method="post" action="{{ url_for('admin.refund_enrollment', enrollment_id=e.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Refund</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">No enrollments yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -90,6 +90,8 @@ taken), but you can also come back and fill these in after step 5.
    | `AI_KEY` | Groq API key (clip suggestions, chaptering, metadata) |
    | `HF_API_KEY` | Hugging Face key (Clipper's suggest feature) |
    | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | from the TikTok portal |
+   | `PAYSTACK_SECRET_KEY` | from the Paystack dashboard → Settings → API Keys & Webhooks. **Required** once `DATABASE_URL` is set — same boot guard as `SECRET_KEY`/`CHANNEL_TOKEN_ENC_KEY`. Also register `https://<your-domain>/master-class/webhook` as the webhook URL in that same Paystack settings page |
+   | `PAYSTACK_PUBLIC_KEY` | from the same page — optional, only needed if a client-side Paystack flow is added later |
 
    `SECRET_KEY` and `CHANNEL_TOKEN_ENC_KEY` are `generateValue: true` —
    Render fills them; don't touch. `CHANNEL_TOKEN_ENC_KEY` must be a valid
@@ -105,6 +107,7 @@ taken), but you can also come back and fill these in after step 5.
    | `DATABASE_URL` | same Supabase string as the web service |
    | `PUBLIC_BASE_URL` | same as the web service |
    | `AI_KEY` | same Groq key |
+   | `PAYSTACK_SECRET_KEY` | copy the web service's value. **Required** — same boot guard as `SECRET_KEY`/`CHANNEL_TOKEN_ENC_KEY`, even though this process never touches Master Class checkout |
 
 4. **Secret Files** (web service → Environment → Secret Files). Render mounts
    these at `/etc/secrets/<filename>`; `docker-entrypoint.sh` copies them into

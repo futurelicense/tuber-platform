@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, session
 from flask_login import login_required, login_user, current_user
 
 from . import bp
@@ -88,6 +88,11 @@ def capture(code):
     if affiliate is None:
         flash("That referral link isn't valid.", "error")
         return redirect(url_for("auth.home"))
+
+    # Lets a prospect who clicks a referral link but converts later (e.g. on
+    # the Master Class sales page, reached via an external Paystack redirect
+    # round-trip) still get attributed to this affiliate.
+    session["ref_code"] = code.upper()
 
     if request.method == "POST":
         prospect = _create_prospect(affiliate.id, referral_code_used=code.upper())

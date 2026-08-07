@@ -89,6 +89,7 @@
     <a href="{{ url_for('admin.rewards') }}" class="{{ 'active' if request.endpoint=='admin.rewards' }}">Rewards</a>
     <a href="{{ url_for('admin.watched_channels') }}" class="{{ 'active' if request.endpoint=='admin.watched_channels' }}">Watched channels</a>
     <a href="{{ url_for('admin.affiliates') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.affiliate') }}">Affiliates</a>
+    <a href="{{ url_for('admin.master_class') }}" class="{{ 'active' if request.endpoint and 'master_class' in request.endpoint or request.endpoint == 'admin.refund_enrollment' }}">Master Class</a>
     {% endif %}
     {% if current_user.role in ('admin', 'clipper') %}
     <a href="{{ url_for('suggestions.queue') }}" class="{{ 'active' if request.endpoint=='suggestions.queue' }}">Suggestions</a>

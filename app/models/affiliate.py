@@ -53,9 +53,13 @@ class Prospect(db.Model):
 
 
 class Commission(db.Model):
-    """Admin-created and admin-controlled — no automatic payout engine.
-    rate_percent_snapshot freezes the rate that was in effect when the
-    commission was created, so a later rate change doesn't rewrite history.
+    """Admin-controlled (status transitions always go through the admin
+    blueprint), but not always admin-created: Phase 2's Master Class
+    checkout creates these automatically from a paid, affiliate-attributed
+    enrollment — created_by_id is null in that case, since there's no admin
+    in the loop. rate_percent_snapshot freezes the rate that was in effect
+    when the commission was created, so a later rate change doesn't rewrite
+    history.
     """
 
     __tablename__ = "commissions"
@@ -67,7 +71,15 @@ class Commission(db.Model):
     rate_percent_snapshot = db.Column(db.Numeric(5, 2), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="pending")
     note = db.Column(db.Text)
-    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    # Set only for commissions auto-created from a paid Master Class
+    # enrollment. Unique so a race between duplicate webhook deliveries (or
+    # a webhook racing the browser callback) can create at most one
+    # Commission per enrollment — the loser hits IntegrityError and is
+    # treated as "already handled" rather than double-crediting an affiliate.
+    source_enrollment_id = db.Column(
+        db.Integer, db.ForeignKey("master_class_enrollments.id"), unique=True
+    )
     created_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
@@ -83,6 +95,16 @@ class Commission(db.Model):
             "status in ('pending','approved','paid','voided')", name="ck_commission_status"
         ),
     )
+
+
+def effective_commission_rate(affiliate):
+    """The rate a new commission for this affiliate should use: their own
+    override if set, else the program-wide default. Shared by the admin
+    blueprint's manual commission creation and Master Class's automatic
+    commission creation so the two paths can never compute a different rate
+    for the same affiliate.
+    """
+    return affiliate.commission_rate_percent or AffiliateProgramSettings.get().default_commission_rate_percent
 
 
 class AffiliateProgramSettings(db.Model):

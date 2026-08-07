@@ -39,7 +39,9 @@ python3 wsgi.py   # dev server on :8000, both /clip and /produce mounted
 ```
 
 Then log in at `http://localhost:8000/login`. Create clipper/producer
-accounts from the admin dashboard's Users page — there's no public signup.
+accounts from the admin dashboard's Users page. Affiliate accounts are
+self-serve at `/affiliate/signup`; there's no public signup for the
+internal squad roles.
 
 ## Tests
 
@@ -58,6 +60,15 @@ python3 -m unittest discover -s tests -v
 - `test_suggest_agent` — the suggest-agent's data model (dedup, status
   transitions, controlled vocab) and the suggestions review-queue's
   approve/reject race guard.
+- `test_affiliate` — the affiliate program: signup, `/r/<code>` referral
+  attribution, the homepage's `/interest` capture, admin commission CRUD
+  and rate resolution, dashboard authorization, and confirming
+  `RoleGateMiddleware` still excludes the affiliate role from `/clip`/`/produce`.
+- `test_master_class` — Paystack-backed enrollment: server-side-only
+  pricing, webhook signature verification (valid/missing/tampered),
+  idempotency on duplicate webhook delivery, the callback route re-verifying
+  rather than trusting its query string, and automatic commission creation
+  at the correct (override-or-default) rate.
 
 ## Deploying
 

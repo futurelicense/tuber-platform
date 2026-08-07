@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # guards as test_suggest_agent.py, so these need setting here too.
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("CHANNEL_TOKEN_ENC_KEY", "test-channel-token-enc-key")
+os.environ.setdefault("PAYSTACK_SECRET_KEY", "test-paystack-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8000")
 

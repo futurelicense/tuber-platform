@@ -60,9 +60,12 @@
       </form>
     </div>
     <div class="card pillar">
-      <h3>0&rarr;1k Master Class <span class="pill soon">Coming soon</span></h3>
+      <h3>0&rarr;1k Master Class {% if not master_class_open %}<span class="pill soon">Coming soon</span>{% endif %}</h3>
       <p>Learn YouTube as a creator — niche finding, scripting, faceless content, SEO, publishing.
         Everything it takes to go from 0 to 1,000 subscribers in 30 days.</p>
+      {% if master_class_open %}
+      <a href="{{ url_for('master_class.sales') }}" class="btn" style="width:100%;text-align:center">Enroll now</a>
+      {% else %}
       <form method="post" action="{{ url_for('affiliate.interest') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="interest_type" value="master_class">
@@ -70,6 +73,7 @@
         <input name="email" type="email" placeholder="Email" required>
         <button type="submit" style="width:100%">Join the waitlist</button>
       </form>
+      {% endif %}
     </div>
   </div>
 </div>

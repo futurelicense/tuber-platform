@@ -1,0 +1,32 @@
+{% extends "marketing_base.html" %}
+{% block title %}0→1k Master Class — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto">
+  <h2 style="margin-top:0">The 0&rarr;1k Master Class</h2>
+  <p class="hint">Learn YouTube as a creator — niche finding, scripting, faceless content
+    production, SEO, and publishing. Everything it takes to go from 0 to 1,000 subscribers in
+    30 days.</p>
+
+  {% if settings.is_open_for_enrollment %}
+  <p style="font-size:28px;font-weight:800;margin:20px 0">
+    {{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }}
+  </p>
+  <form method="post" action="{{ url_for('master_class.enroll') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="ref_code" value="{{ ref_code or '' }}">
+    <label for="name">Your name</label>
+    <input id="name" name="name" type="text" required autofocus>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone (optional)</label>
+    <input id="phone" name="phone" type="tel">
+    <button type="submit" style="width:100%">Enroll &amp; pay with Paystack</button>
+  </form>
+  {% else %}
+  <p class="pill soon" style="margin-bottom:16px">Not open yet</p>
+  <p class="hint">Enrollment isn't open right now. Join the waitlist from the homepage and
+    we'll let you know the moment it is.</p>
+  <a href="{{ url_for('auth.home') }}" class="btn secondary">Back to MoneyTuber</a>
+  {% endif %}
+</div>
+{% endblock %}

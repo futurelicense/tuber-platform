@@ -40,6 +40,10 @@ services:
         sync: false
       - key: TIKTOK_CLIENT_SECRET
         sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false # only needed if a client-side Paystack flow is added later
     disk:
       name: media-storage
       mountPath: /app/data
@@ -79,6 +83,10 @@ services:
         value: https://api.groq.com/openai/v1/chat/completions
       - key: HF_API_KEY
         sync: false # same key as the web service — enables the HF overflow fallback
+      - key: PAYSTACK_SECRET_KEY
+        sync: false # same value as the web service's — config.py requires it
+                     # to be set to boot the app at all, even though this
+                     # process never touches Master Class checkout
     # Deliberately no `disk:` — nothing in the agent's path touches
     # CLIPPER_DOWNLOAD_DIR/YTPROD_OUTPUT_DIR (channel listing and transcript
     # fetch both use skip_download/extract_flat), and Render persistent disks

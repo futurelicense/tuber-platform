@@ -1,0 +1,10 @@
+{% extends "marketing_base.html" %}
+{% block title %}Confirming payment — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
+  <h2 style="margin-top:0">Still confirming your payment&hellip;</h2>
+  <p class="hint">If you completed payment, this usually clears within a minute or two. If it
+    doesn't, reach out to us at {{ enrollment.buyer_email }} and we'll sort it out.</p>
+  <a href="{{ url_for('auth.home') }}" class="btn secondary">Back to MoneyTuber</a>
+</div>
+{% endblock %}

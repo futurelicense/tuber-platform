@@ -21,6 +21,9 @@ from ..models import (
     Prospect,
     Commission,
     AffiliateProgramSettings,
+    effective_commission_rate,
+    MasterClassEnrollment,
+    MasterClassSettings,
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
 
@@ -370,10 +373,7 @@ def affiliate_detail(user_id):
         .order_by(Commission.created_at.desc())
         .all()
     )
-    effective_rate = (
-        affiliate.commission_rate_percent
-        or AffiliateProgramSettings.get().default_commission_rate_percent
-    )
+    effective_rate = effective_commission_rate(affiliate)
     return render_template(
         "admin/affiliate_detail.html",
         affiliate=affiliate,
@@ -406,10 +406,7 @@ def new_commission(user_id):
         flash("A positive commission amount is required.", "error")
         return redirect(url_for("admin.affiliate_detail", user_id=affiliate.id))
 
-    rate = (
-        affiliate.commission_rate_percent
-        or AffiliateProgramSettings.get().default_commission_rate_percent
-    )
+    rate = effective_commission_rate(affiliate)
     db.session.add(
         Commission(
             affiliate_id=affiliate.id,
@@ -462,3 +459,45 @@ def update_prospect_status(prospect_id):
     db.session.commit()
     flash(f"Prospect '{prospect.name}' marked {new_status}.", "success")
     return _prospect_redirect(prospect)
+
+
+@bp.route("/master-class")
+def master_class():
+    settings = MasterClassSettings.get()
+    enrollments = MasterClassEnrollment.query.order_by(
+        MasterClassEnrollment.created_at.desc()
+    ).all()
+    return render_template(
+        "admin/master_class.html", settings=settings, enrollments=enrollments
+    )
+
+
+@bp.route("/master-class/settings", methods=["POST"])
+def update_master_class_settings():
+    price = request.form.get("price_amount", type=float)
+    currency = (request.form.get("currency") or "").strip().upper()
+    is_open = request.form.get("is_open_for_enrollment") == "on"
+
+    if not price or price <= 0 or len(currency) != 3:
+        flash("Enter a valid price and 3-letter currency code.", "error")
+        return redirect(url_for("admin.master_class"))
+
+    settings = MasterClassSettings.get()
+    settings.price_amount = price
+    settings.currency = currency
+    settings.is_open_for_enrollment = is_open
+    db.session.commit()
+    flash("Master Class settings updated.", "success")
+    return redirect(url_for("admin.master_class"))
+
+
+@bp.route("/master-class/enrollments/<int:enrollment_id>/refund", methods=["POST"])
+def refund_enrollment(enrollment_id):
+    enrollment = MasterClassEnrollment.query.get_or_404(enrollment_id)
+    if enrollment.status != "paid":
+        flash("Only a paid enrollment can be refunded.", "error")
+        return redirect(url_for("admin.master_class"))
+    enrollment.status = "refunded"
+    db.session.commit()
+    flash(f"Enrollment #{enrollment.id} marked refunded.", "success")
+    return redirect(url_for("admin.master_class"))

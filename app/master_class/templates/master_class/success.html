@@ -1,0 +1,10 @@
+{% extends "marketing_base.html" %}
+{% block title %}You're enrolled — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
+  <h2 style="margin-top:0">You're enrolled!</h2>
+  <p class="hint">Thanks, {{ enrollment.buyer_name }} — payment confirmed. We'll reach out at
+    {{ enrollment.buyer_email }} with everything you need to get started.</p>
+  <a href="{{ url_for('auth.home') }}" class="btn">Back to MoneyTuber</a>
+</div>
+{% endblock %}
