@@ -91,7 +91,7 @@ class _DbTestCase(unittest.TestCase):
         headers = {"Content-Type": "application/json"}
         if signature is not None:
             headers["X-Paystack-Signature"] = signature
-        return self.client.post("/master-class/webhook", data=body_bytes, headers=headers)
+        return self.client.post("/webhooks/paystack", data=body_bytes, headers=headers)
 
 
 class EnrollPricingTests(_DbTestCase):

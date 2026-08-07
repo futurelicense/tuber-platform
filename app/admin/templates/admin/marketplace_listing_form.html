@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if listing else 'New' }} listing — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px">
+  <h2>{{ 'Edit' if listing else 'New' }} channel listing</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="title">Title</label>
+    <input id="title" name="title" type="text" value="{{ listing.title if listing else '' }}" required autofocus>
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="4">{{ listing.description if listing else '' }}</textarea>
+    <label for="niche">Niche</label>
+    <input id="niche" name="niche" type="text" value="{{ listing.niche if listing else '' }}">
+    <label for="monetization_status">Monetization status</label>
+    <select id="monetization_status" name="monetization_status" required>
+      <option value="monetized" {{ 'selected' if listing and listing.monetization_status == 'monetized' }}>Monetized</option>
+      <option value="unmonetized" {{ 'selected' if listing and listing.monetization_status == 'unmonetized' }}>Unmonetized</option>
+    </select>
+    <label for="subscriber_count">Subscriber count</label>
+    <input id="subscriber_count" name="subscriber_count" type="number" min="0"
+           value="{{ listing.subscriber_count if listing and listing.subscriber_count is not none else '' }}">
+    <label for="total_views">Total views</label>
+    <input id="total_views" name="total_views" type="number" min="0"
+           value="{{ listing.total_views if listing and listing.total_views is not none else '' }}">
+    <label for="stats_note">Other stats / notes</label>
+    <textarea id="stats_note" name="stats_note" rows="2">{{ listing.stats_note if listing else '' }}</textarea>
+    <label for="price">Price</label>
+    <input id="price" name="price" type="number" step="0.01" min="0.01"
+           value="{{ listing.price if listing else '' }}" required>
+    <label for="currency">Currency</label>
+    <input id="currency" name="currency" maxlength="3" value="{{ listing.currency if listing else 'NGN' }}" required>
+    <div class="hint">New listings save as a draft — publish it separately once ready.</div>
+    <button type="submit">{{ 'Save changes' if listing else 'Create listing' }}</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "marketing_base.html" %}
+{% block title %}Purchase confirmed — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
+  <h2 style="margin-top:0">Payment confirmed!</h2>
+  <p class="hint">Thanks, {{ order.buyer_name }} — the channel is yours. Our team will reach out
+    at {{ order.buyer_email }} shortly to coordinate the account handoff.</p>
+  <a href="{{ url_for('auth.home') }}" class="btn">Back to MoneyTuber</a>
+</div>
+{% endblock %}

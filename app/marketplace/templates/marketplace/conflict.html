@@ -1,0 +1,11 @@
+{% extends "marketing_base.html" %}
+{% block title %}We need to sort this out — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
+  <h2 style="margin-top:0">Your payment went through, but there's a mix-up</h2>
+  <p class="hint">This channel was sold to another buyer moments before your payment confirmed.
+    You haven't lost anything — reach out to us at {{ order.buyer_email }} and we'll refund you
+    or help you pick a different listing right away.</p>
+  <a href="{{ url_for('marketplace.browse') }}" class="btn">Browse other channels</a>
+</div>
+{% endblock %}

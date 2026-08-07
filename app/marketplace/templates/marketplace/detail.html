@@ -1,0 +1,43 @@
+{% extends "marketing_base.html" %}
+{% block title %}{{ listing.title }} — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto">
+  <h2 style="margin-top:0">{{ listing.title }}</h2>
+  <span class="pill {{ 'ok' if listing.monetization_status == 'monetized' else 'off' }}">
+    {{ listing.monetization_status }}
+  </span>
+  {% if listing.niche %}<span class="hint" style="margin:8px 0 0">{{ listing.niche }}</span>{% endif %}
+  {% if listing.description %}<p style="margin:14px 0">{{ listing.description }}</p>{% endif %}
+  <ul style="color:var(--muted);font-size:13.5px;line-height:1.8;padding-left:18px">
+    {% if listing.subscriber_count %}<li>{{ listing.subscriber_count }} subscribers</li>{% endif %}
+    {% if listing.total_views %}<li>{{ listing.total_views }} total views</li>{% endif %}
+    {% if listing.stats_note %}<li>{{ listing.stats_note }}</li>{% endif %}
+  </ul>
+
+  <p style="font-size:28px;font-weight:800;margin:20px 0">
+    {{ listing.currency }} {{ '%.2f' | format(listing.price) }}
+  </p>
+
+  {% if listing.availability == 'available' %}
+  <form method="post" action="{{ url_for('marketplace.buy', listing_id=listing.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="ref_code" value="{{ ref_code or '' }}">
+    <label for="name">Your name</label>
+    <input id="name" name="name" type="text" required autofocus>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone (optional)</label>
+    <input id="phone" name="phone" type="tel">
+    <div class="hint" style="margin-top:-8px">
+      Payment secures the channel; handoff of account access is coordinated manually with our
+      team after purchase.
+    </div>
+    <button type="submit" style="width:100%">Buy &amp; pay with Paystack</button>
+  </form>
+  {% else %}
+  <p class="pill soon" style="margin-bottom:16px">No longer available</p>
+  <p class="hint">This channel has just been reserved or sold. Check back for other listings.</p>
+  <a href="{{ url_for('marketplace.browse') }}" class="btn secondary">Browse other channels</a>
+  {% endif %}
+</div>
+{% endblock %}

@@ -69,6 +69,15 @@ python3 -m unittest discover -s tests -v
   idempotency on duplicate webhook delivery, the callback route re-verifying
   rather than trusting its query string, and automatic commission creation
   at the correct (override-or-default) rate.
+- `test_marketplace` — the channel marketplace: everything `test_master_class`
+  covers, plus the two-stage locking that keeps a unique listing from being
+  sold to two buyers at once (reserve at checkout, finalize at payment) and
+  the `payment_conflict` fallback for the rare case both stages still race.
+
+Both `test_master_class` and `test_marketplace` post webhook payloads to the
+single consolidated `/webhooks/paystack` endpoint (`app/webhooks/routes.py`)
+that both products actually share in production — see that module's
+docstring for why (Paystack only supports one webhook URL per account).
 
 ## Deploying
 

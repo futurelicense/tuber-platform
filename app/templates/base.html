@@ -90,6 +90,8 @@
     <a href="{{ url_for('admin.watched_channels') }}" class="{{ 'active' if request.endpoint=='admin.watched_channels' }}">Watched channels</a>
     <a href="{{ url_for('admin.affiliates') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.affiliate') }}">Affiliates</a>
     <a href="{{ url_for('admin.master_class') }}" class="{{ 'active' if request.endpoint and 'master_class' in request.endpoint or request.endpoint == 'admin.refund_enrollment' }}">Master Class</a>
+    <a href="{{ url_for('admin.marketplace_listings') }}" class="{{ 'active' if request.endpoint and 'listing' in request.endpoint }}">Marketplace</a>
+    <a href="{{ url_for('admin.marketplace_orders') }}" class="{{ 'active' if request.endpoint and (request.endpoint == 'admin.marketplace_orders' or request.endpoint == 'admin.update_order_status' or request.endpoint == 'admin.refund_order') }}">Orders</a>
     {% endif %}
     {% if current_user.role in ('admin', 'clipper') %}
     <a href="{{ url_for('suggestions.queue') }}" class="{{ 'active' if request.endpoint=='suggestions.queue' }}">Suggestions</a>

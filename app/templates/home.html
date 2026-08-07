@@ -48,9 +48,12 @@
       </form>
     </div>
     <div class="card pillar">
-      <h3>Buy a Channel <span class="pill soon">Coming soon</span></h3>
-      <p>Monetized and unmonetized YouTube channels, vetted and ready to hand off. No storefront
-        yet — join the list and we'll reach out when it opens.</p>
+      <h3>Buy a Channel {% if not marketplace_open %}<span class="pill soon">Coming soon</span>{% endif %}</h3>
+      <p>Monetized and unmonetized YouTube channels, vetted and ready to hand off.</p>
+      {% if marketplace_open %}
+      <a href="{{ url_for('marketplace.browse') }}" class="btn" style="width:100%;text-align:center">Browse listings</a>
+      {% else %}
+      <p class="hint" style="margin-top:-4px">No storefront yet — join the list and we'll reach out when it opens.</p>
       <form method="post" action="{{ url_for('affiliate.interest') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="interest_type" value="buy_channel">
@@ -58,6 +61,7 @@
         <input name="email" type="email" placeholder="Email" required>
         <button type="submit" style="width:100%">Join the waitlist</button>
       </form>
+      {% endif %}
     </div>
     <div class="card pillar">
       <h3>0&rarr;1k Master Class {% if not master_class_open %}<span class="pill soon">Coming soon</span>{% endif %}</h3>

@@ -1,7 +1,4 @@
-import hashlib
-import hmac
 import logging
-import os
 import secrets
 
 from flask import render_template, request, redirect, url_for, flash, session
@@ -9,7 +6,7 @@ from flask import render_template, request, redirect, url_for, flash, session
 from . import bp
 from .services import mark_enrollment_paid
 from .. import paystack
-from ..extensions import db, csrf
+from ..extensions import db
 from ..models import User, Prospect, MasterClassEnrollment, MasterClassSettings
 
 logger = logging.getLogger(__name__)
@@ -130,44 +127,6 @@ def callback():
     return render_template("master_class/pending.html", enrollment=enrollment)
 
 
-@bp.route("/webhook", methods=["POST"])
-@csrf.exempt
-def webhook():
-    raw = request.get_data()
-    signature = request.headers.get("X-Paystack-Signature", "")
-    secret = os.environ.get("PAYSTACK_SECRET_KEY", "").strip().encode()
-    expected = hmac.new(secret, raw, hashlib.sha512).hexdigest()
-
-    if not signature or not hmac.compare_digest(signature, expected):
-        logger.warning("Rejected Master Class webhook: signature mismatch")
-        return {"status": "invalid signature"}, 400
-
-    payload = request.get_json(silent=True) or {}
-    event = payload.get("event")
-    if event != "charge.success":
-        return {"status": "ignored"}, 200
-
-    data = payload.get("data") or {}
-    reference = data.get("reference")
-    enrollment = MasterClassEnrollment.query.filter_by(paystack_reference=reference).first()
-    if enrollment is None:
-        logger.warning("Master Class webhook for unknown reference %r", reference)
-        return {"status": "ignored"}, 200
-
-    if enrollment.status == "paid":
-        return {"status": "already processed"}, 200
-
-    # Belt-and-suspenders per Paystack's own guidance: don't grant value off
-    # the webhook payload alone even after a valid signature — re-verify.
-    try:
-        verified = paystack.verify_transaction(reference)
-    except paystack.PaystackError as e:
-        logger.warning("Webhook re-verify failed for %s: %s", reference, e)
-        return {"status": "verify failed"}, 200
-
-    if verified.get("status") == "success" and int(verified.get("amount", -1)) == _expected_kobo(
-        enrollment
-    ):
-        mark_enrollment_paid(enrollment)
-
-    return {"status": "ok"}, 200
+# Paystack's server-to-server webhook is handled at a single consolidated
+# endpoint, not here — see app/webhooks/routes.py's module docstring for
+# why (Paystack's dashboard only supports one webhook URL per account).

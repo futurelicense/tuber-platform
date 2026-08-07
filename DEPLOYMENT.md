@@ -90,7 +90,7 @@ taken), but you can also come back and fill these in after step 5.
    | `AI_KEY` | Groq API key (clip suggestions, chaptering, metadata) |
    | `HF_API_KEY` | Hugging Face key (Clipper's suggest feature) |
    | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | from the TikTok portal |
-   | `PAYSTACK_SECRET_KEY` | from the Paystack dashboard → Settings → API Keys & Webhooks. **Required** once `DATABASE_URL` is set — same boot guard as `SECRET_KEY`/`CHANNEL_TOKEN_ENC_KEY`. Also register `https://<your-domain>/master-class/webhook` as the webhook URL in that same Paystack settings page |
+   | `PAYSTACK_SECRET_KEY` | from the Paystack dashboard → Settings → API Keys & Webhooks. **Required** once `DATABASE_URL` is set — same boot guard as `SECRET_KEY`/`CHANNEL_TOKEN_ENC_KEY`. Also register `https://<your-domain>/webhooks/paystack` as the webhook URL in that same Paystack settings page — Paystack only supports **one** webhook URL per account/mode, so both Master Class and marketplace payment confirmations share this single endpoint (it dispatches by the payment reference's `mc-`/`ch-` prefix) |
    | `PAYSTACK_PUBLIC_KEY` | from the same page — optional, only needed if a client-side Paystack flow is added later |
 
    `SECRET_KEY` and `CHANNEL_TOKEN_ENC_KEY` are `generateValue: true` —

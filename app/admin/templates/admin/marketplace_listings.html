@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Marketplace listings — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <h2 style="margin:0">Channel listings</h2>
+    <a href="{{ url_for('admin.new_listing') }}"><button type="button">New listing</button></a>
+  </div>
+  <table>
+    <tr><th>Title</th><th>Price</th><th>Status</th><th>Availability</th><th></th></tr>
+    {% for l in listings %}
+    <tr>
+      <td>{{ l.title }}</td>
+      <td>{{ l.currency }} {{ '%.2f' | format(l.price) }}</td>
+      <td><span class="pill {{ 'ok' if l.status == 'published' else 'off' }}">{{ l.status }}</span></td>
+      <td><span class="pill {{ 'ok' if l.availability == 'available' else 'off' }}">{{ l.availability }}</span></td>
+      <td style="display:flex;gap:8px">
+        <a href="{{ url_for('admin.edit_listing', listing_id=l.id) }}">Edit</a>
+        {% if l.status != 'published' %}
+        <form method="post" action="{{ url_for('admin.publish_listing', listing_id=l.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">Publish</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('admin.unpublish_listing', listing_id=l.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">Unpublish</button>
+        </form>
+        {% endif %}
+        {% if l.status != 'withdrawn' %}
+        <form method="post" action="{{ url_for('admin.withdraw_listing', listing_id=l.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Withdraw</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No listings yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

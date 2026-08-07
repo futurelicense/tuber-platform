@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Marketplace orders — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Channel orders</h2>
+  <table>
+    <tr><th>Buyer</th><th>Listing</th><th>Amount</th><th>Affiliate</th><th>Status</th><th>Note</th><th></th></tr>
+    {% for o in orders %}
+    <tr>
+      <td>{{ o.buyer_name }}<br><span class="hint" style="margin:0">{{ o.buyer_email }}</span></td>
+      <td>{{ o.listing.title if o.listing else '—' }}</td>
+      <td>{{ o.currency }} {{ '%.2f' | format(o.amount) }}</td>
+      <td>
+        {% if o.affiliate %}
+        <a href="{{ url_for('admin.affiliate_detail', user_id=o.affiliate.id) }}">{{ o.affiliate.display_name or o.affiliate.email }}</a>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('admin.update_order_status', order_id=o.id) }}" style="display:inline-flex;gap:6px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="status" onchange="this.form.submit()" style="margin-bottom:0;width:auto">
+            {% for s in order_statuses %}
+            <option value="{{ s }}" {{ 'selected' if o.status == s }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+      <td style="max-width:200px;font-size:12px;color:var(--muted)">{{ o.admin_note or '—' }}</td>
+      <td>
+        {% if o.status in ('paid', 'handoff_in_progress', 'payment_conflict') %}
+        <form method="post" action="{{ url_for('admin.refund_order', order_id=o.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Refund</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="color:var(--faint)">No orders yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

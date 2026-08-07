@@ -24,8 +24,12 @@ from ..models import (
     effective_commission_rate,
     MasterClassEnrollment,
     MasterClassSettings,
+    ChannelListing,
+    ChannelOrder,
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
+from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
+from ..marketplace.services import release_listing
 
 
 @bp.before_request
@@ -501,3 +505,177 @@ def refund_enrollment(enrollment_id):
     db.session.commit()
     flash(f"Enrollment #{enrollment.id} marked refunded.", "success")
     return redirect(url_for("admin.master_class"))
+
+
+@bp.route("/marketplace/listings")
+def marketplace_listings():
+    listings = ChannelListing.query.order_by(ChannelListing.created_at.desc()).all()
+    return render_template("admin/marketplace_listings.html", listings=listings)
+
+
+def _listing_form_fields():
+    return {
+        "title": (request.form.get("title") or "").strip(),
+        "description": (request.form.get("description") or "").strip(),
+        "niche": (request.form.get("niche") or "").strip(),
+        "monetization_status": request.form.get("monetization_status"),
+        "subscriber_count": request.form.get("subscriber_count", type=int),
+        "total_views": request.form.get("total_views", type=int),
+        "stats_note": (request.form.get("stats_note") or "").strip(),
+        "price": request.form.get("price", type=float),
+        "currency": (request.form.get("currency") or "").strip().upper(),
+    }
+
+
+@bp.route("/marketplace/listings/new", methods=["GET", "POST"])
+def new_listing():
+    if request.method == "POST":
+        fields = _listing_form_fields()
+        if (
+            not fields["title"]
+            or not fields["price"]
+            or fields["price"] <= 0
+            or fields["monetization_status"] not in MONETIZATION_STATUSES
+            or len(fields["currency"]) != 3
+        ):
+            flash("Title, a valid price, currency, and monetization status are required.", "error")
+            return render_template("admin/marketplace_listing_form.html", listing=None)
+
+        listing = ChannelListing(
+            title=fields["title"],
+            description=fields["description"] or None,
+            niche=fields["niche"] or None,
+            monetization_status=fields["monetization_status"],
+            subscriber_count=fields["subscriber_count"],
+            total_views=fields["total_views"],
+            stats_note=fields["stats_note"] or None,
+            price=fields["price"],
+            currency=fields["currency"],
+            created_by_id=current_user.id,
+        )
+        db.session.add(listing)
+        db.session.commit()
+        flash(f"Listing '{listing.title}' created as a draft.", "success")
+        return redirect(url_for("admin.marketplace_listings"))
+
+    return render_template("admin/marketplace_listing_form.html", listing=None)
+
+
+@bp.route("/marketplace/listings/<int:listing_id>/edit", methods=["GET", "POST"])
+def edit_listing(listing_id):
+    listing = ChannelListing.query.get_or_404(listing_id)
+
+    if request.method == "POST":
+        fields = _listing_form_fields()
+        if (
+            not fields["title"]
+            or not fields["price"]
+            or fields["price"] <= 0
+            or fields["monetization_status"] not in MONETIZATION_STATUSES
+            or len(fields["currency"]) != 3
+        ):
+            flash("Title, a valid price, currency, and monetization status are required.", "error")
+            return render_template("admin/marketplace_listing_form.html", listing=listing)
+
+        listing.title = fields["title"]
+        listing.description = fields["description"] or None
+        listing.niche = fields["niche"] or None
+        listing.monetization_status = fields["monetization_status"]
+        listing.subscriber_count = fields["subscriber_count"]
+        listing.total_views = fields["total_views"]
+        listing.stats_note = fields["stats_note"] or None
+        listing.price = fields["price"]
+        listing.currency = fields["currency"]
+        db.session.commit()
+        flash(f"Listing '{listing.title}' updated.", "success")
+        return redirect(url_for("admin.marketplace_listings"))
+
+    return render_template("admin/marketplace_listing_form.html", listing=listing)
+
+
+@bp.route("/marketplace/listings/<int:listing_id>/publish", methods=["POST"])
+def publish_listing(listing_id):
+    listing = ChannelListing.query.get_or_404(listing_id)
+    listing.status = "published"
+    db.session.commit()
+    flash(f"'{listing.title}' is now published.", "success")
+    return redirect(url_for("admin.marketplace_listings"))
+
+
+@bp.route("/marketplace/listings/<int:listing_id>/unpublish", methods=["POST"])
+def unpublish_listing(listing_id):
+    listing = ChannelListing.query.get_or_404(listing_id)
+    listing.status = "draft"
+    db.session.commit()
+    flash(f"'{listing.title}' moved back to draft.", "success")
+    return redirect(url_for("admin.marketplace_listings"))
+
+
+@bp.route("/marketplace/listings/<int:listing_id>/withdraw", methods=["POST"])
+def withdraw_listing(listing_id):
+    listing = ChannelListing.query.get_or_404(listing_id)
+
+    # A live reservation on a listing being pulled from sale would otherwise
+    # leave its buyer's checkout dangling — cancel that order outright
+    # rather than letting it silently expire via the reservation TTL.
+    if listing.availability == "reserved" and listing.holder_order_id:
+        held_order = ChannelOrder.query.get(listing.holder_order_id)
+        if held_order and held_order.status == "pending":
+            held_order.status = "cancelled"
+            note = (held_order.admin_note + "\n") if held_order.admin_note else ""
+            held_order.admin_note = note + "AUTO: listing was withdrawn by admin."
+        release_listing(listing.id, listing.holder_order_id)
+
+    listing.status = "withdrawn"
+    db.session.commit()
+    flash(f"'{listing.title}' withdrawn.", "success")
+    return redirect(url_for("admin.marketplace_listings"))
+
+
+@bp.route("/marketplace/orders")
+def marketplace_orders():
+    orders = ChannelOrder.query.order_by(ChannelOrder.created_at.desc()).all()
+    return render_template(
+        "admin/marketplace_orders.html", orders=orders, order_statuses=ORDER_STATUSES
+    )
+
+
+@bp.route("/marketplace/orders/<int:order_id>/status", methods=["POST"])
+def update_order_status(order_id):
+    order = ChannelOrder.query.get_or_404(order_id)
+    new_status = request.form.get("status")
+    admin_note = (request.form.get("admin_note") or "").strip()
+
+    if new_status not in ORDER_STATUSES:
+        flash("Invalid order status.", "error")
+        return redirect(url_for("admin.marketplace_orders"))
+
+    order.status = new_status
+    if admin_note:
+        order.admin_note = admin_note
+    if new_status == "completed" and order.completed_at is None:
+        order.completed_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash(f"Order #{order.id} marked {new_status}.", "success")
+    return redirect(url_for("admin.marketplace_orders"))
+
+
+@bp.route("/marketplace/orders/<int:order_id>/refund", methods=["POST"])
+def refund_order(order_id):
+    order = ChannelOrder.query.get_or_404(order_id)
+    if order.status not in ("paid", "handoff_in_progress", "payment_conflict"):
+        flash("Only a paid, in-progress, or conflicted order can be refunded.", "error")
+        return redirect(url_for("admin.marketplace_orders"))
+
+    order.status = "refunded"
+    db.session.commit()
+
+    listing = ChannelListing.query.get(order.listing_id)
+    if listing and listing.holder_order_id == order.id and listing.availability == "sold":
+        listing.availability = "available"
+        listing.holder_order_id = None
+        listing.sold_at = None
+        db.session.commit()
+
+    flash(f"Order #{order.id} marked refunded.", "success")
+    return redirect(url_for("admin.marketplace_orders"))

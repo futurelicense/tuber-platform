@@ -54,12 +54,12 @@ class Prospect(db.Model):
 
 class Commission(db.Model):
     """Admin-controlled (status transitions always go through the admin
-    blueprint), but not always admin-created: Phase 2's Master Class
-    checkout creates these automatically from a paid, affiliate-attributed
-    enrollment — created_by_id is null in that case, since there's no admin
-    in the loop. rate_percent_snapshot freezes the rate that was in effect
-    when the commission was created, so a later rate change doesn't rewrite
-    history.
+    blueprint), but not always admin-created: Master Class checkout and the
+    channel marketplace both create these automatically from a paid,
+    affiliate-attributed purchase — created_by_id is null in that case,
+    since there's no admin in the loop. rate_percent_snapshot freezes the
+    rate that was in effect when the commission was created, so a later
+    rate change doesn't rewrite history.
     """
 
     __tablename__ = "commissions"
@@ -80,6 +80,12 @@ class Commission(db.Model):
     source_enrollment_id = db.Column(
         db.Integer, db.ForeignKey("master_class_enrollments.id"), unique=True
     )
+    # Same idempotency role as source_enrollment_id, for a paid channel
+    # order instead of a Master Class enrollment. A single FK column can't
+    # validly reference two different tables, so this is a second dedicated
+    # column rather than a shared polymorphic one — keeps both uniqueness
+    # guarantees DB-enforced rather than relying on app-level convention.
+    source_order_id = db.Column(db.Integer, db.ForeignKey("channel_orders.id"), unique=True)
     created_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
@@ -93,6 +99,10 @@ class Commission(db.Model):
     __table_args__ = (
         db.CheckConstraint(
             "status in ('pending','approved','paid','voided')", name="ck_commission_status"
+        ),
+        db.CheckConstraint(
+            "source_enrollment_id is null or source_order_id is null",
+            name="ck_commission_single_source",
         ),
     )
 

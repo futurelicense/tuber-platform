@@ -5,6 +5,8 @@ without touching requests internals. Unlike app/geo.py's fail-open lookup
 to reach the caller — silently swallowing it would either lose money or
 leave a customer stuck mid-checkout.
 """
+import hashlib
+import hmac
 import os
 
 import requests
@@ -20,6 +22,21 @@ class PaystackError(Exception):
 def _headers():
     key = os.environ.get("PAYSTACK_SECRET_KEY", "").strip()
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+
+def verify_webhook_signature(raw_body, signature_header):
+    """raw_body must be the exact bytes Paystack sent (request.get_data(),
+    not a re-serialized/re-parsed body) — the signature is an HMAC-SHA512
+    of those exact bytes, keyed with the secret key. Paystack's dashboard
+    only supports one webhook URL per account/mode, so this is shared by a
+    single consolidated endpoint (app/webhooks/routes.py) rather than
+    duplicated per product.
+    """
+    if not signature_header:
+        return False
+    secret = os.environ.get("PAYSTACK_SECRET_KEY", "").strip().encode()
+    expected = hmac.new(secret, raw_body, hashlib.sha512).hexdigest()
+    return hmac.compare_digest(signature_header, expected)
 
 
 def initialize_transaction(email, amount_kobo, reference, callback_url, metadata=None):
