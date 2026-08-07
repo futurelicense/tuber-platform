@@ -17,7 +17,7 @@
 {% for video, clips in by_video.items() %}
 <div class="card">
   <h2 style="margin-bottom:4px">{{ video.video_title or video.video_url }}</h2>
-  <p class="hint" style="margin-top:0"><a href="{{ video.video_url }}" target="_blank" rel="noopener">{{ video.video_url }}</a></p>
+  <p class="hint" style="margin-top:0">{% if video.video_url.startswith('http') %}<a href="{{ video.video_url }}" target="_blank" rel="noopener">{{ video.video_url }}</a>{% else %}<code>{{ video.video_url }}</code>{% endif %}</p>
   <table>
     <tr><th>Clip</th><th>Time</th><th>Reason</th><th>Platform</th><th></th></tr>
     {% for c in clips %}

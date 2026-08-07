@@ -101,6 +101,7 @@ taken), but you can also come back and fill these in after step 5.
    | Var | Value |
    |---|---|
    | `SECRET_KEY` | copy the web service's generated value. **Required** — the app now refuses to boot with `DATABASE_URL` set but no `SECRET_KEY` |
+   | `CHANNEL_TOKEN_ENC_KEY` | copy the web service's generated value. **Required** — same boot guard as `SECRET_KEY`, refuses to start with `DATABASE_URL` set but no `CHANNEL_TOKEN_ENC_KEY` |
    | `DATABASE_URL` | same Supabase string as the web service |
    | `PUBLIC_BASE_URL` | same as the web service |
    | `AI_KEY` | same Groq key |

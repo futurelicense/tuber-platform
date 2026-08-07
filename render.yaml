@@ -59,6 +59,10 @@ services:
         sync: false # same value as the web service's — not security-sensitive
                      # here since this process never serves HTTP sessions, but
                      # config.py requires it to be set to boot the app at all
+      - key: CHANNEL_TOKEN_ENC_KEY
+        sync: false # same value as the web service's — config.py requires it
+                     # to be set to boot the app at all, same as SECRET_KEY,
+                     # even though this process never touches connected_channels
       - key: DATABASE_URL
         sync: false # same Supabase connection string as the web service
       - key: PUBLIC_BASE_URL

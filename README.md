@@ -44,13 +44,20 @@ accounts from the admin dashboard's Users page — there's no public signup.
 ## Tests
 
 ```bash
-python3 -m unittest tests.test_prefix_rewrite -v
+python3 -m unittest discover -s tests -v
 ```
 
-Covers `PrefixRewriteMiddleware` — the middleware that rewrites the
-root-relative URLs both vendored apps hardcode in their HTML/JSON responses
-so they resolve under `/clip`/`/produce` instead of the platform root. See
-that file's module docstring for why this middleware exists at all.
+- `test_prefix_rewrite` — `PrefixRewriteMiddleware`, which rewrites the
+  root-relative URLs both vendored apps hardcode in their HTML/JSON responses
+  so they resolve under `/clip`/`/produce` instead of the platform root. See
+  that file's module docstring for why this middleware exists at all.
+- `test_origin_check` — `OriginCheckMiddleware`, the CSRF defense for
+  `/clip`/`/produce` (neither vendored app has a token concept of its own).
+  See that file's module docstring for why Origin/Referer matching is used
+  instead of a token.
+- `test_suggest_agent` — the suggest-agent's data model (dedup, status
+  transitions, controlled vocab) and the suggestions review-queue's
+  approve/reject race guard.
 
 ## Deploying
 

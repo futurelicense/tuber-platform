@@ -4,11 +4,37 @@ from collections import OrderedDict
 
 from flask import render_template, redirect, flash
 from flask_login import login_required, current_user
+from sqlalchemy import update
 
 from . import bp
 from ..extensions import db
 from ..auth.decorators import roles_required
 from ..models import SuggestedClip, DiscoveredVideo
+
+
+def _claim(clip_id, new_status):
+    """Atomically move a clip out of 'pending', guarding against two clippers
+    approving/rejecting the same suggestion at once. A plain read-then-write
+    (SELECT, check .status, then UPDATE) has a TOCTOU race under gunicorn's
+    multi-threaded worker (Dockerfile runs --threads 24): both requests can
+    read 'pending' before either commits, so both would "win" and the second
+    commit would silently overwrite the first reviewer's attribution while
+    both users get redirected as if they were the one handling it.
+
+    The UPDATE...WHERE status='pending' only matches for whichever request
+    gets there first; rowcount tells the loser it lost.
+    """
+    result = db.session.execute(
+        update(SuggestedClip)
+        .where(SuggestedClip.id == clip_id, SuggestedClip.status == "pending")
+        .values(
+            status=new_status,
+            reviewed_by_id=current_user.id,
+            reviewed_at=datetime.now(timezone.utc),
+        )
+    )
+    db.session.commit()
+    return result.rowcount > 0
 
 
 @bp.before_request
@@ -35,17 +61,14 @@ def queue():
 @bp.route("/<int:clip_id>/approve", methods=["POST"])
 def approve(clip_id):
     clip = SuggestedClip.query.get_or_404(clip_id)
-    if clip.status != "pending":
+    won = _claim(clip_id, "approved")
+    if not won:
+        db.session.refresh(clip)
         flash(
             f"Already handled by {clip.reviewed_by.email if clip.reviewed_by else 'someone else'}.",
             "error",
         )
         return redirect("/suggestions/")
-
-    clip.status = "approved"
-    clip.reviewed_by_id = current_user.id
-    clip.reviewed_at = datetime.now(timezone.utc)
-    db.session.commit()
 
     # Suggest-only: approving hands off to Clipper's own UI for the human to
     # actually review the timeline and cut it — never triggers a cut here.
@@ -55,16 +78,14 @@ def approve(clip_id):
 @bp.route("/<int:clip_id>/reject", methods=["POST"])
 def reject(clip_id):
     clip = SuggestedClip.query.get_or_404(clip_id)
-    if clip.status != "pending":
+    won = _claim(clip_id, "rejected")
+    if not won:
+        db.session.refresh(clip)
         flash(
             f"Already handled by {clip.reviewed_by.email if clip.reviewed_by else 'someone else'}.",
             "error",
         )
         return redirect("/suggestions/")
 
-    clip.status = "rejected"
-    clip.reviewed_by_id = current_user.id
-    clip.reviewed_at = datetime.now(timezone.utc)
-    db.session.commit()
     flash("Suggestion rejected.", "success")
     return redirect("/suggestions/")

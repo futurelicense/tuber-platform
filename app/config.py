@@ -31,6 +31,25 @@ def _secret_key():
     return "dev-only-insecure-key"
 
 
+def _channel_token_enc_key():
+    # Without this key, app/crypto.py falls back to storing
+    # ConnectedChannel.token_blob (real OAuth tokens, once that flow is
+    # wired up) as plain JSON instead of Fernet-encrypted — silently, since
+    # encrypt_token_blob() has no other signal that encryption was skipped.
+    # Same "DATABASE_URL means real deployment" rule as SECRET_KEY: refuse to
+    # boot rather than risk a misconfigured prod writing tokens in the clear.
+    key = os.environ.get("CHANNEL_TOKEN_ENC_KEY", "").strip()
+    if key or not os.environ.get("DATABASE_URL"):
+        return key
+    raise RuntimeError(
+        "CHANNEL_TOKEN_ENC_KEY is not set but DATABASE_URL is — refusing to "
+        "start without it, since app/crypto.py would silently store "
+        "connected-channel OAuth tokens unencrypted. Set CHANNEL_TOKEN_ENC_KEY "
+        "in the environment (Render: generateValue on the web service; copy "
+        "the same value to the cron service)."
+    )
+
+
 class Config:
     SECRET_KEY = _secret_key()
     SQLALCHEMY_DATABASE_URI = _normalized_database_uri()
@@ -54,7 +73,7 @@ class Config:
 
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
     GEO_API_URL = os.environ.get("GEO_API_URL", "http://ip-api.com/json")
-    CHANNEL_TOKEN_ENC_KEY = os.environ.get("CHANNEL_TOKEN_ENC_KEY", "")
+    CHANNEL_TOKEN_ENC_KEY = _channel_token_enc_key()
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

@@ -6,8 +6,14 @@ WSGI callable via werkzeug's DispatcherMiddleware:
     /produce   -> ytproduction, gated to producer/admin
 
 Each mounted sub-app is wrapped, closest-to-furthest from the real app:
-    RoleGateMiddleware      (auth/role check + coarse activity log — runs first)
-    PrefixRewriteMiddleware (rewrites root-relative URLs in the response — runs last)
+    RoleGateMiddleware      (auth/role check + coarse activity log)
+    PrefixRewriteMiddleware (rewrites root-relative URLs in the response)
+    OriginCheckMiddleware   (CSRF defense for POST/PUT/PATCH/DELETE — runs first)
+
+OriginCheckMiddleware is outermost so a cross-origin forgery attempt is
+rejected before it can reach RoleGateMiddleware's activity-log write or the
+real app at all — see app/mounting/origin_check.py for why it's needed
+despite CSRFProtect already covering the platform's own routes.
 """
 import importlib.util
 import os
@@ -17,6 +23,7 @@ from pathlib import Path
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .origin_check import OriginCheckMiddleware
 from .prefix_rewrite import PrefixRewriteMiddleware
 from .role_gate import RoleGateMiddleware
 
@@ -77,11 +84,13 @@ def build_wsgi_app(platform_app):
         clipper_app.wsgi_app, platform_app, section="clip", allowed_roles=("clipper",)
     )
     clip_wsgi = PrefixRewriteMiddleware(clip_wsgi, "/clip", CLIPPER_ROUTES)
+    clip_wsgi = OriginCheckMiddleware(clip_wsgi)
 
     produce_wsgi = RoleGateMiddleware(
         ytprod_app.wsgi_app, platform_app, section="produce", allowed_roles=("producer",)
     )
     produce_wsgi = PrefixRewriteMiddleware(produce_wsgi, "/produce", YTPROD_ROUTES)
+    produce_wsgi = OriginCheckMiddleware(produce_wsgi)
 
     dispatched = DispatcherMiddleware(
         platform_app.wsgi_app,
