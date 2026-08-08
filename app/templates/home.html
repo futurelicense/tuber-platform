@@ -1,93 +1,801 @@
 {% extends "marketing_base.html" %}
-{% block title %}MoneyTuber — Digital Real Estate for YouTube{% endblock %}
+{% block title %}MoneyTuber — Turn YouTube Into Digital Real Estate{% endblock %}
+{% block main_attrs %} class="full-bleed"{% endblock %}
+
+{% block header %}
+<header class="hp-header" id="hp-top">
+  <div class="hp-header-inner">
+    <a href="#hp-top" class="hp-brand">
+      <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" height="26">
+      <span>Money<span class="accent">Tuber</span></span>
+    </a>
+    <nav class="hp-nav">
+      <a href="#offers">What we offer</a>
+      <a href="#results">Results</a>
+      <a href="#how">How it works</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#offers" class="btn hp-header-cta">Get my free teardown</a>
+  </div>
+</header>
+{% endblock %}
+
 {% block content %}
 <style>
-  .hero{padding:70px 0 50px;text-align:center}
-  .hero h1{font-size:38px;line-height:1.15;margin:0 0 16px;font-weight:800}
-  .hero h1 .accent{color:var(--brand)}
-  .hero p{color:var(--muted);font-size:17px;max-width:620px;margin:0 auto 28px;line-height:1.55}
-  .hero .ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .pillars{margin:50px 0}
-  .pillars h2{text-align:center;font-size:22px;margin-bottom:6px}
-  .pillars .sub{text-align:center;color:var(--muted);font-size:14px;margin-bottom:28px}
-  .pillar{display:flex;flex-direction:column;gap:10px}
-  .pillar h3{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
-  .pillar p{color:var(--muted);font-size:13.5px;line-height:1.5;margin:0;flex:1}
-  .band{background:linear-gradient(135deg,rgba(229,17,28,.15),rgba(229,17,28,.03));
-    border:1px solid var(--line);border-radius:var(--radius);padding:36px;margin:50px 0;
-    display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
-  .band h2{margin:0 0 6px;font-size:22px}
-  .band p{color:var(--muted);margin:0;max-width:480px;font-size:14px;line-height:1.5}
+  .full-bleed :is(section, .hp-header-inner, .hp-marquee-inner) { box-sizing: border-box; }
+
+  .hp-header{position:sticky;top:0;z-index:50;background:rgba(2,3,8,.88);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line)}
+  .hp-header-inner{max-width:1180px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;
+    justify-content:space-between;gap:20px}
+  .hp-brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;color:var(--text)}
+  .hp-brand:hover{text-decoration:none}
+  .hp-brand .accent{color:var(--brand)}
+  .hp-nav{display:flex;gap:26px}
+  @media (max-width:900px){ .hp-nav{display:none} }
+  .hp-nav a{color:var(--muted);font-size:14px;font-weight:500}
+  .hp-nav a:hover{color:var(--text);text-decoration:none}
+  .hp-header-cta{font-size:13px;padding:9px 16px}
+
+  .hp-section{max-width:1180px;margin:0 auto;padding:80px 24px}
+  .hp-eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.18em;color:var(--brand)}
+  .hp-h2{margin:12px 0 0;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:-.01em}
+  .hp-lede{margin:12px 0 0;color:var(--muted);font-size:14.5px;max-width:620px;line-height:1.6}
+  @media (max-width:640px){ .hp-h2{font-size:30px} }
+
+  /* reveal-on-scroll */
+  .reveal{opacity:0;transform:translateY(22px);filter:blur(2px);
+    transition:opacity .7s ease-out,transform .7s ease-out,filter .7s ease-out}
+  .reveal.is-visible{opacity:1;transform:none;filter:none}
+
+  /* HERO */
+  .hp-hero{position:relative;overflow:hidden;padding:76px 24px 0}
+  .hp-hero-bg{position:absolute;inset:0;background-image:url("{{ url_for('static', filename='homepage/hero-bg.jpg') }}");
+    background-size:cover;background-position:center bottom;opacity:.22;mix-blend-mode:screen;
+    mask-image:linear-gradient(to bottom, transparent, black 55%, transparent);
+    -webkit-mask-image:linear-gradient(to bottom, transparent, black 55%, transparent);pointer-events:none}
+  .hp-hero-inner{position:relative;max-width:1180px;margin:0 auto;display:grid;gap:48px;
+    grid-template-columns:1.05fr 1fr;align-items:center}
+  @media (max-width:960px){ .hp-hero-inner{grid-template-columns:1fr;text-align:center} }
+
+  .hp-badge{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(229,17,28,.35);
+    background:rgba(229,17,28,.1);padding:7px 15px;border-radius:20px;font-size:12px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.14em;color:var(--brand-soft)}
+  .hp-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:pulse-ember 2.2s infinite}
+  @keyframes pulse-ember{0%,100%{box-shadow:0 0 0 0 rgba(229,17,28,.55)}50%{box-shadow:0 0 0 10px rgba(229,17,28,0)}}
+
+  .hp-hero h1{margin:22px 0 0;font-size:60px;line-height:.94;font-weight:800;letter-spacing:-.02em}
+  .hp-hero h1 .accent{color:var(--brand)}
+  @media (max-width:960px){ .hp-hero h1{font-size:42px} }
+  @media (max-width:480px){ .hp-hero h1{font-size:34px} }
+
+  .hp-hero p.lede{margin:20px 0 0;color:var(--muted);font-size:16.5px;line-height:1.6;max-width:520px}
+  @media (max-width:960px){ .hp-hero p.lede{margin-left:auto;margin-right:auto} }
+
+  .hp-cta-row{margin-top:30px;display:flex;gap:12px;flex-wrap:wrap}
+  @media (max-width:960px){ .hp-cta-row{justify-content:center} }
+  .btn{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:14px 26px;
+    font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;
+    align-items:center;gap:8px;transition:transform .2s ease,background .2s ease}
+  .btn:hover{background:var(--brand-soft);text-decoration:none;transform:scale(1.03)}
+  .btn.quiet{background:none;border:1px solid var(--line-bright);color:var(--text)}
+  .btn.quiet:hover{border-color:var(--brand);background:rgba(229,17,28,.08)}
+  .btn.block{width:100%;justify-content:center}
+
+  .hp-avatars{margin-top:26px;display:flex;align-items:center;gap:12px}
+  @media (max-width:960px){ .hp-avatars{justify-content:center} }
+  .hp-avatars .stack{display:flex}
+  .hp-avatars .stack img{width:32px;height:32px;border-radius:50%;object-fit:cover;
+    border:2px solid var(--ink);margin-left:-8px}
+  .hp-avatars .stack img:first-child{margin-left:0}
+  .hp-avatars p{margin:0;font-size:12.5px;color:var(--muted)}
+  .hp-avatars strong{color:var(--text)}
+
+  .hp-hero-visual{position:relative}
+  .hp-hero-card{position:relative;border:1px solid var(--line-bright);border-radius:16px;
+    background:rgba(18,20,27,.5);padding:8px;box-shadow:0 24px 60px -30px rgba(0,0,0,.9)}
+  .hp-hero-card img{width:100%;border-radius:10px;display:block}
+  .hp-float{position:absolute;border:1px solid var(--line-bright);background:rgba(2,3,8,.95);
+    backdrop-filter:blur(6px);border-radius:12px;padding:11px 15px;box-shadow:0 18px 50px -18px rgba(229,17,28,.5)}
+  .hp-float .n{margin:0;font-size:22px;line-height:1;color:var(--brand-soft);font-variant-numeric:tabular-nums}
+  .hp-float .n.plain{color:var(--text)}
+  .hp-float .l{margin:5px 0 0;font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .hp-float.bl{bottom:-18px;left:-14px}
+  .hp-float.tr{top:-14px;right:-10px}
+  @media (max-width:480px){ .hp-float{padding:8px 11px} .hp-float .n{font-size:17px} }
+
+  .hp-stats{max-width:980px;margin:64px auto 0;padding-top:36px;border-top:1px solid var(--line);
+    padding-bottom:76px;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;text-align:center}
+  @media (max-width:640px){ .hp-stats{grid-template-columns:repeat(2,1fr)} }
+  .hp-stats dd{margin:0;font-size:34px;font-weight:800;color:var(--brand);font-variant-numeric:tabular-nums}
+  .hp-stats p{margin:4px 0 0;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+
+  /* MARQUEE */
+  .hp-marquee{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    background:rgba(18,20,27,.35);padding:13px 0}
+  .hp-marquee-track{display:flex;width:max-content;gap:40px;white-space:nowrap;
+    animation:hp-marquee 32s linear infinite}
+  .hp-marquee-track span{font-size:11.5px;text-transform:uppercase;letter-spacing:.2em;color:var(--muted)}
+  .hp-marquee-track span.dot{color:var(--brand)}
+  @keyframes hp-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion: reduce){ .hp-marquee-track{animation:none} }
+
+  /* GENERIC CARD GRID */
+  .hp-grid{display:grid;gap:22px}
+  .hp-grid.cols-2{grid-template-columns:repeat(2,1fr)}
+  .hp-grid.cols-3{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:900px){ .hp-grid.cols-2, .hp-grid.cols-3{grid-template-columns:1fr} }
+
+  .hp-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 24px 60px -30px rgba(0,0,0,.85);transition:transform .3s ease,border-color .3s ease}
+  .hp-card:hover{transform:translateY(-4px);border-color:rgba(229,17,28,.5)}
+
+  /* PROOF SCREENS */
+  .hp-proof-shot{height:230px;background:linear-gradient(145deg,var(--panel-2),var(--ink));
+    border-bottom:1px solid var(--line);position:relative;overflow:hidden;border-radius:16px 16px 0 0}
+  .hp-proof-shot .placeholder-note{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;color:var(--faint);font-size:11px;text-align:center;padding:20px}
+  .hp-tag{position:absolute;left:16px;top:16px;border:1px solid rgba(229,17,28,.4);
+    background:rgba(2,3,8,.85);padding:5px 12px;border-radius:20px;font-size:10.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.12em;color:var(--brand-soft)}
+  .hp-card-body{padding:22px}
+  .hp-card-body h3{margin:0;font-size:21px;font-weight:700;line-height:1.25}
+  .hp-card-body p.copy{margin:8px 0 0;color:var(--muted);font-size:13.5px;line-height:1.6}
+  .hp-mini-stats{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);
+    display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .hp-mini-stats dd{margin:0;font-size:18px;color:var(--brand);font-variant-numeric:tabular-nums}
+  .hp-mini-stats dt{margin:3px 0 0;font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+
+  /* RESULTS SHOWCASE */
+  .hp-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .hp-result-head h3{margin:0;font-size:20px;font-weight:700}
+  .hp-result-head p{margin:3px 0 0;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .hp-days-badge{border:1px solid rgba(229,17,28,.4);background:rgba(229,17,28,.1);padding:4px 10px;
+    border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--brand-soft);white-space:nowrap}
+  .hp-sparkline{width:100%;height:64px;margin-top:14px;display:block}
+  .hp-result-move{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;font-size:13.5px}
+  .hp-result-move .from{color:var(--faint);text-decoration:line-through}
+  .hp-result-move .to{font-weight:700}
+  .hp-result-revenue{margin:6px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--brand)}
+
+  /* PARTNER STATUS */
+  .hp-partner{border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    background:rgba(18,20,27,.3)}
+  .hp-partner-head{max-width:680px;margin:0 auto;text-align:center}
+  .hp-partner-shot{border:1px solid rgba(229,17,28,.35);border-radius:16px;overflow:hidden;background:var(--ink)}
+  .hp-partner-shot .hp-proof-shot{height:280px;border-radius:0}
+  .hp-partner-shot figcaption{padding:12px 18px;border-top:1px solid var(--line);
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .hp-earners{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:18px 0 0;padding:0;list-style:none}
+  .hp-earners li{border:1px solid var(--line-bright);background:rgba(2,3,8,.5);border-radius:10px;
+    padding:10px 13px;font-size:13px}
+  .hp-earners li .cash{color:var(--brand);margin-right:6px}
+  .hp-path-card{padding:24px;display:flex;flex-direction:column;height:100%}
+  .hp-path-card .k{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:var(--brand)}
+  .hp-path-card h4{margin:8px 0 0;font-size:19px}
+  .hp-path-card p{flex:1;margin:10px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6}
+
+  /* TESTIMONIALS */
+  .hp-testimonial{padding:24px;display:flex;flex-direction:column;height:100%}
+  .hp-t-metric{align-self:flex-start;border:1px solid rgba(229,17,28,.4);background:rgba(229,17,28,.1);
+    padding:5px 12px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--brand-soft)}
+  .hp-testimonial blockquote{margin:16px 0 0;font-size:15px;line-height:1.6;color:var(--text)}
+  .hp-t-foot{margin-top:20px;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:11px}
+  .hp-t-foot img{width:38px;height:38px;border-radius:50%;object-fit:cover}
+  .hp-t-foot strong{display:block;font-size:13.5px}
+  .hp-t-foot span{display:block;font-size:11.5px;color:var(--muted)}
+
+  /* OFFERS */
+  .hp-offers-head{text-align:center;max-width:600px;margin:0 auto}
+  .hp-offers-badges{margin-top:16px;display:flex;justify-content:center;flex-wrap:wrap;gap:10px}
+  .hp-slot-badge{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(229,17,28,.4);
+    background:rgba(229,17,28,.1);padding:7px 14px;border-radius:20px;font-size:11.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.1em;color:var(--brand-soft)}
+  .hp-wa-link{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-bright);
+    padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--text)}
+  .hp-wa-link:hover{border-color:var(--brand);color:var(--brand-soft);text-decoration:none}
+
+  .hp-offer-card{position:relative;display:flex;flex-direction:column;padding:26px}
+  .hp-offer-card.featured{border-color:rgba(229,17,28,.55)}
+  .hp-offer-badge-top{position:absolute;top:-13px;left:24px;background:var(--brand);color:#fff;
+    font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+    padding:5px 13px;border-radius:20px}
+  .hp-offer-eyebrow{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+  .hp-offer-card h3{margin:8px 0 0;font-size:26px;line-height:1}
+  .hp-offer-card p.pitch{margin:11px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .hp-offer-bullets{list-style:none;margin:15px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .hp-offer-bullets li{display:flex;gap:9px;font-size:13.5px;color:rgba(233,231,225,.9)}
+  .hp-offer-bullets li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand);
+    margin-top:6px;flex-shrink:0}
+  .hp-offer-form{margin-top:22px;display:flex;flex-direction:column;gap:9px}
+  .hp-offer-form input{height:42px;background:rgba(2,3,8,.6);border:1px solid var(--line-bright);
+    color:var(--text);border-radius:8px;padding:0 13px;font-size:14px;font-family:inherit;
+    outline:none;margin:0}
+  .hp-offer-form input:focus{border-color:var(--brand)}
+  .hp-size-options{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .hp-size-options input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+  .hp-size-options label{height:38px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line-bright);border-radius:8px;font-size:11.5px;font-weight:700;
+    color:var(--muted);cursor:pointer;transition:all .15s}
+  .hp-size-options input[type=radio]:checked + label{border-color:var(--brand);
+    background:rgba(229,17,28,.15);color:var(--brand-soft)}
+  .hp-offer-proof{margin-top:12px;text-align:center;font-size:11.5px;color:var(--faint)}
+  .hp-offer-open-link{margin-top:22px}
+
+  /* HOW / STEPS */
+  .hp-step{padding:24px}
+  .hp-step .n{font-size:42px;font-weight:800;color:rgba(229,17,28,.3)}
+  .hp-step h3{margin:8px 0 0;font-size:21px}
+  .hp-step p{margin:8px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6}
+
+  /* AFFILIATE BAND */
+  .hp-affiliate-band{position:relative;overflow:hidden;border:1px solid rgba(229,17,28,.4);
+    border-radius:16px;background:linear-gradient(135deg,rgba(229,17,28,.14),rgba(229,17,28,.02));
+    padding:36px}
+  .hp-affiliate-inner{position:relative;display:flex;align-items:center;justify-content:space-between;
+    gap:24px;flex-wrap:wrap}
+  .hp-affiliate-inner h2{margin:0;font-size:30px}
+  .hp-affiliate-inner p{margin:10px 0 0;max-width:480px;color:var(--muted);font-size:13.5px;line-height:1.6}
+
+  /* FAQ */
+  .hp-faq-wrap{max-width:720px;margin:0 auto}
+  .hp-faq{border-bottom:1px solid var(--line)}
+  .hp-faq summary{padding:18px 4px;font-size:15px;cursor:pointer;list-style:none;
+    display:flex;justify-content:space-between;gap:14px}
+  .hp-faq summary::-webkit-details-marker{display:none}
+  .hp-faq summary::after{content:"+";color:var(--brand);font-size:20px;flex-shrink:0}
+  .hp-faq[open] summary::after{content:"−"}
+  .hp-faq p{margin:0 4px 18px;color:var(--muted);font-size:13.5px;line-height:1.6}
+
+  /* FINAL CTA */
+  .hp-final{text-align:center;border-top:1px solid var(--line)}
+  .hp-final h2{margin:0 auto;max-width:680px;font-size:46px;line-height:1.05;font-weight:800}
+  @media (max-width:640px){ .hp-final h2{font-size:30px} }
+  .hp-final .hp-cta-row{justify-content:center;margin-top:28px}
+  .hp-final .fine{margin-top:16px;font-size:12px;color:var(--muted)}
+
+  footer.hp-foot{border-top:1px solid var(--line);padding:24px;text-align:center;color:var(--faint);
+    font-size:12px;padding-bottom:90px}
+
+  /* STICKY MOBILE CTA */
+  .hp-sticky-cta{display:none}
+  @media (max-width:640px){
+    .hp-sticky-cta{display:block;position:fixed;left:0;right:0;bottom:0;z-index:50;
+      background:rgba(2,3,8,.97);border-top:1px solid var(--line);padding:11px 14px;
+      backdrop-filter:blur(8px)}
+  }
 </style>
 
-<div class="hero">
-  <h1>Turn YouTube into <span class="accent">digital real estate</span>.</h1>
-  <p>MoneyTuber trains squads of clippers and producers to grow and monetize YouTube channels —
-    for clients, and for you. Grow from scratch, scale what you already have, or own a channel
-    outright.</p>
-  <div class="ctas">
-    <a href="#pillars" class="btn">See what we offer</a>
-    <a href="{{ url_for('affiliate.signup') }}" class="btn secondary">Become an affiliate</a>
+<!-- HERO -->
+<section class="hp-hero">
+  <div class="hp-hero-bg" aria-hidden="true"></div>
+  <div class="hp-hero-inner">
+    <div>
+      <span class="hp-badge reveal"><span class="dot"></span> 7 teardown slots left this week</span>
+      <h1 class="reveal">Turn YouTube into <span class="accent">digital real estate</span>.</h1>
+      <p class="lede reveal">MoneyTuber trains squads of clippers and producers to grow and monetize
+        YouTube channels — for clients, and for you. Grow from scratch, scale what you already have,
+        or own a channel outright.</p>
+      <div class="hp-cta-row reveal">
+        <a href="#offers" class="btn">Claim my free channel teardown</a>
+        <a href="#results" class="btn quiet">See real results</a>
+      </div>
+      <div class="hp-avatars reveal">
+        <div class="stack">
+          <img src="{{ url_for('static', filename='homepage/person-1.jpg') }}" alt="">
+          <img src="{{ url_for('static', filename='homepage/person-2.jpg') }}" alt="">
+          <img src="{{ url_for('static', filename='homepage/person-3.jpg') }}" alt="">
+        </div>
+        <p><strong>240+ operators</strong> already run channels with us</p>
+      </div>
+    </div>
+
+    <div class="hp-hero-visual reveal">
+      <div class="hp-hero-card">
+        <img src="{{ url_for('static', filename='homepage/dashboard.jpg') }}"
+             alt="Channel analytics dashboard showing subscriber growth trending upward">
+        <div class="hp-float bl">
+          <p class="n" data-countup="41200">0</p>
+          <p class="l">subs added, 11 weeks</p>
+        </div>
+        <div class="hp-float tr">
+          <p class="n plain">$<span data-countup="8.4" data-decimals="1">0</span>k</p>
+          <p class="l">monthly, one channel</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <dl class="hp-stats">
+    <div><dd data-countup="180" data-suffix="M+">0</dd><p>views produced</p></div>
+    <div><dd data-countup="240" data-suffix="+">0</dd><p>channels operated</p></div>
+    <div><dd data-countup="31" data-suffix=" days">0</dd><p>median monetization pace</p></div>
+    <div><dd data-countup="97" data-suffix="%">0</dd><p>clients renew</p></div>
+  </dl>
+</section>
+
+<!-- MARQUEE -->
+<div class="hp-marquee">
+  <div class="hp-marquee-track">
+    {% for _ in range(2) %}
+    <span>Faceless channels</span><span class="dot">◆</span>
+    <span>Clipper squads</span><span class="dot">◆</span>
+    <span>Monetization ops</span><span class="dot">◆</span>
+    <span>Channel acquisitions</span><span class="dot">◆</span>
+    <span>Thumbnail testing</span><span class="dot">◆</span>
+    <span>Shorts engines</span><span class="dot">◆</span>
+    {% endfor %}
   </div>
 </div>
 
-<div class="pillars" id="pillars">
-  <h2>Three ways in</h2>
-  <p class="sub">Whichever fits where you are today.</p>
-  <div class="grid">
-    <div class="card pillar">
+<!-- RESULTS -->
+<section class="hp-section" id="results">
+  <div class="reveal">
+    <p class="hp-eyebrow">Receipts, not promises</p>
+    <h2 class="hp-h2">Channels we took from flat to compounding</h2>
+    <p class="hp-lede">Straight from YouTube Studio — one asset compounding over years, and one
+      started this July already pulling numbers.</p>
+  </div>
+
+  <div class="hp-grid cols-2" style="margin-top:40px">
+    <div class="hp-card reveal">
+      <div class="hp-proof-shot">
+        <span class="hp-tag">The compounding curve</span>
+        <div class="placeholder-note">Real Studio screenshot — pending asset upload</div>
+      </div>
+      <div class="hp-card-body">
+        <h3>5 years of compounding on one asset</h3>
+        <p class="copy">4.09M lifetime views, 21.5K watch hours and 10.2K subscribers. Flat for
+          years, then a vertical breakout once the format and posting engine locked in. This is
+          what owning the asset looks like.</p>
+        <dl class="hp-mini-stats">
+          <div><dd>4.09M</dd><dt>lifetime views</dt></div>
+          <div><dd>21.5K</dd><dt>watch hours</dt></div>
+          <div><dd>+10.2K</dd><dt>subscribers</dt></div>
+        </dl>
+      </div>
+    </div>
+    <div class="hp-card reveal">
+      <div class="hp-proof-shot">
+        <span class="hp-tag">Started July 2026</span>
+        <div class="placeholder-note">Real Studio screenshot — pending asset upload</div>
+      </div>
+      <div class="hp-card-body">
+        <h3>A brand-new channel, first 28 days</h3>
+        <p class="copy">Zero history. Inside the first month: 11.4K views, 142 watch hours and
+          3,824 subscribers banked — the exact same playbook, at day one.</p>
+        <dl class="hp-mini-stats">
+          <div><dd>11.4K</dd><dt>views / 28d</dt></div>
+          <div><dd>142.4</dd><dt>watch hours</dt></div>
+          <div><dd>3,824</dd><dt>subscribers</dt></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="hp-grid cols-3" style="margin-top:22px">
+    <div class="hp-card reveal">
+      <div class="hp-card-body">
+        <div class="hp-result-head">
+          <div><h3>Faceless finance</h3><p>Long-form + Shorts</p></div>
+          <span class="hp-days-badge">77 days</span>
+        </div>
+        <svg viewBox="0 0 260 70" class="hp-sparkline" aria-hidden="true">
+          <polygon points="0,64.4 28.9,63.2 57.8,63.8 86.7,61.2 115.6,58.0 144.4,54.2 173.3,45.2 202.2,33.7 231.1,17.1 260,3 260,70 0,70"
+            fill="var(--brand)" opacity=".18"/>
+          <polyline points="0,64.4 28.9,63.2 57.8,63.8 86.7,61.2 115.6,58.0 144.4,54.2 173.3,45.2 202.2,33.7 231.1,17.1 260,3"
+            fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="hp-result-move">
+          <span class="from">900 subs</span><span>→</span><span class="to">41,200 subs</span>
+        </div>
+        <p class="hp-result-revenue">$8.4k/mo</p>
+      </div>
+    </div>
+    <div class="hp-card reveal">
+      <div class="hp-card-body">
+        <div class="hp-result-head">
+          <div><h3>History docs</h3><p>Faceless, AI voice</p></div>
+          <span class="hp-days-badge">34 days</span>
+        </div>
+        <svg viewBox="0 0 260 70" class="hp-sparkline" aria-hidden="true">
+          <polygon points="0,65.6 28.9,64.9 57.8,62.8 86.7,61.4 115.6,58.0 144.4,51.7 173.3,46.1 202.2,35.0 231.1,18.3 260,3 260,70 0,70"
+            fill="var(--brand)" opacity=".18"/>
+          <polyline points="0,65.6 28.9,64.9 57.8,62.8 86.7,61.4 115.6,58.0 144.4,51.7 173.3,46.1 202.2,35.0 231.1,18.3 260,3"
+            fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="hp-result-move">
+          <span class="from">0 subs</span><span>→</span><span class="to">12,800 subs</span>
+        </div>
+        <p class="hp-result-revenue">Monetized</p>
+      </div>
+    </div>
+    <div class="hp-card reveal">
+      <div class="hp-card-body">
+        <div class="hp-result-head">
+          <div><h3>Creator channel</h3><p>Clipper squad takeover</p></div>
+          <span class="hp-days-badge">6 months</span>
+        </div>
+        <svg viewBox="0 0 260 70" class="hp-sparkline" aria-hidden="true">
+          <polygon points="0,60.6 28.9,58.0 57.8,55.5 86.7,51.6 115.6,47.8 144.4,38.8 173.3,29.9 202.2,21.6 231.1,12.0 260,3 260,70 0,70"
+            fill="var(--brand)" opacity=".18"/>
+          <polyline points="0,60.6 28.9,58.0 57.8,55.5 86.7,51.6 115.6,47.8 144.4,38.8 173.3,29.9 202.2,21.6 231.1,12.0 260,3"
+            fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="hp-result-move">
+          <span class="from">126k subs</span><span>→</span><span class="to">380k subs</span>
+        </div>
+        <p class="hp-result-revenue">3.1x revenue</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PARTNER STATUS -->
+<section class="hp-partner hp-section" id="partner">
+  <div class="hp-partner-head reveal">
+    <p class="hp-eyebrow">The only screen that pays</p>
+    <h2 class="hp-h2" style="font-size:46px">"You're a <span class="accent">YouTube Partner</span>."</h2>
+    <p class="hp-lede" style="margin-left:auto;margin-right:auto">That single line is the switch
+      between posting for fun and getting paid every month. Six income taps open the moment it
+      flips — and they never stop while your videos stay up.</p>
+  </div>
+
+  <div class="hp-grid cols-2" style="margin-top:44px;align-items:center;grid-template-columns:1.15fr 1fr">
+    <figure class="hp-partner-shot reveal" style="margin:0">
+      <div class="hp-proof-shot">
+        <div class="placeholder-note">Real Studio "Earn" screenshot — pending asset upload</div>
+      </div>
+      <figcaption>Real Studio account · payment set-up complete · paid 21st–26th monthly</figcaption>
+    </figure>
+    <div class="hp-card reveal" style="padding:24px">
+      <h3 style="margin:0;font-size:22px">Six taps, one asset</h3>
+      <ul class="hp-earners">
+        <li><span class="cash">$</span>Watch Page Ads</li>
+        <li><span class="cash">$</span>Shorts Feed Ads</li>
+        <li><span class="cash">$</span>Memberships</li>
+        <li><span class="cash">$</span>Supers &amp; gifts</li>
+        <li><span class="cash">$</span>Shopping</li>
+        <li><span class="cash">$</span>Partnerships</li>
+      </ul>
+      <p style="margin:18px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">A monetized
+        channel is digital real estate that appreciates with every content posted — no tenants,
+        no service charge, no land dispute.</p>
+      <a href="#offers" class="btn block" style="margin-top:20px">Flip my switch — start now</a>
+    </div>
+  </div>
+
+  <div class="hp-grid cols-3" style="margin-top:26px">
+    <div class="hp-card hp-path-card reveal">
+      <span class="k">Path 01</span>
+      <h4>We build it. You rest.</h4>
+      <p>Hand us the channel (or start from zero). Our team scripts, edits, publishes and
+        optimises until the Partner screen says monetized — you just collect.</p>
+      <a href="#offers" class="btn block" style="margin-top:18px">Get the free teardown</a>
+    </div>
+    <div class="hp-card hp-path-card reveal">
+      <span class="k">Path 02</span>
+      <h4>Buy a monetized channel</h4>
+      <p>Landed property sits still. A monetized channel appreciates with every upload — ads,
+        memberships, Supers, shopping and partnerships turned on from day one.</p>
+      <a href="#offers" class="btn quiet block" style="margin-top:18px">See available channels</a>
+    </div>
+    <div class="hp-card hp-path-card reveal">
+      <span class="k">Path 03</span>
+      <h4>Join TMT MasterClass</h4>
+      <p>Team MoneyTuber trains you to monetize like a pro — the exact 0→1k playbook, formats
+        and posting engine we run internally.</p>
+      <a href="#offers" class="btn quiet block" style="margin-top:18px">Join the MasterClass</a>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="hp-section" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(18,20,27,.25)">
+  <h2 class="hp-h2 reveal">Operators, not gurus</h2>
+  <div class="hp-grid cols-3" style="margin-top:36px">
+    <figure class="hp-card hp-testimonial reveal" style="margin:0">
+      <span class="hp-t-metric">+40.1k subs</span>
+      <blockquote>"Went from 900 to 41,000 subs in eleven weeks. The squad posts more in a week
+        than I did in a month."</blockquote>
+      <figcaption class="hp-t-foot">
+        <img src="{{ url_for('static', filename='homepage/person-1.jpg') }}" alt="">
+        <span><strong>Dele A.</strong><span>Finance channel operator</span></span>
+      </figcaption>
+    </figure>
+    <figure class="hp-card hp-testimonial reveal" style="margin:0">
+      <span class="hp-t-metric">34 days to payout</span>
+      <blockquote>"Monetized in 34 days on a faceless channel I'd never touched. First payout
+        covered the whole engagement."</blockquote>
+      <figcaption class="hp-t-foot">
+        <img src="{{ url_for('static', filename='homepage/person-2.jpg') }}" alt="">
+        <span><strong>Marcus T.</strong><span>Bought a channel in 2025</span></span>
+      </figcaption>
+    </figure>
+    <figure class="hp-card hp-testimonial reveal" style="margin:0">
+      <span class="hp-t-metric">3.1x revenue</span>
+      <blockquote>"I stopped editing entirely. That gave me back 20 hours a week and revenue
+        still tripled."</blockquote>
+      <figcaption class="hp-t-foot">
+        <img src="{{ url_for('static', filename='homepage/person-3.jpg') }}" alt="">
+        <span><strong>Simi O.</strong><span>Creator, 380k subs</span></span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- OFFERS -->
+<section class="hp-section" id="offers">
+  <div class="hp-offers-head reveal">
+    <p class="hp-eyebrow">Three ways in</p>
+    <h2 class="hp-h2">Pick where you are today</h2>
+    <p class="hp-lede" style="margin-left:auto;margin-right:auto">Every path starts with one form
+      — name, email and your phone number. A human replies inside 24 hours.</p>
+    <div class="hp-offers-badges">
+      <span class="hp-slot-badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--brand);display:inline-block"></span> 7 teardown slots left</span>
+      {% if whatsapp_number %}
+      <a class="hp-wa-link" target="_blank" rel="noopener"
+         href="https://wa.me/{{ whatsapp_number }}?text={{ 'Hi MoneyTuber — I want my free channel teardown.' | urlencode }}">
+        Live Chat Admin instantly →
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="hp-grid cols-3" style="margin-top:40px;align-items:stretch">
+    <!-- Grow & Monetize -->
+    <div class="hp-card hp-offer-card featured reveal">
+      <span class="hp-offer-badge-top">Most requested</span>
+      <span class="hp-offer-eyebrow">Track 01</span>
       <h3>Grow &amp; Monetize</h3>
-      <p>Already have a channel, or starting from zero? Our trained clipper and producer squads
-        run the day-to-day work of getting you monetized and growing past it.</p>
-      <form method="post" action="{{ url_for('affiliate.interest') }}">
+      <p class="pitch">You have a channel — or you're starting at zero. Our clipper and producer
+        squads run the daily grind that gets you monetized and past the plateau.</p>
+      <ul class="hp-offer-bullets">
+        <li>Done-for-you posting cadence, 5–7x per week</li>
+        <li>Hooks, titles and thumbnails tested weekly</li>
+        <li>Monetization roadmap with a named operator</li>
+      </ul>
+      <form method="post" action="{{ url_for('affiliate.interest') }}" class="hp-offer-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="interest_type" value="grow_existing_channel">
         <input name="name" placeholder="Your name" required>
         <input name="email" type="email" placeholder="Email" required>
-        <button type="submit" style="width:100%">Talk to us</button>
+        <input name="phone" type="tel" placeholder="Phone number (+1...)">
+        <button type="submit" class="btn block">Talk to us →</button>
       </form>
+      {% if whatsapp_number %}
+      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
+         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in "Grow & Monetize".') | urlencode }}">
+        Or Live Chat Admin now
+      </a>
+      {% endif %}
+      <p class="hp-offer-proof">Free 20-min channel teardown. No pitch if we can't help.</p>
     </div>
-    <div class="card pillar">
-      <h3>Buy a Channel {% if not marketplace_open %}<span class="pill soon">Coming soon</span>{% endif %}</h3>
-      <p>Monetized and unmonetized YouTube channels, vetted and ready to hand off.</p>
+
+    <!-- Buy a Channel -->
+    <div class="hp-card hp-offer-card reveal">
+      <span class="hp-offer-eyebrow">Track 02</span>
+      <h3>Buy a Channel</h3>
+      <p class="pitch">Monetized and unmonetized channels, vetted and ready to hand off. Skip the
+        zero-to-one and own the asset from day one.</p>
+      <ul class="hp-offer-bullets">
+        <li>Revenue, RPM and watch-time verified before listing</li>
+        <li>Transfer, rebrand and ops handled end-to-end</li>
+        <li>First look goes to the waitlist, in order</li>
+      </ul>
       {% if marketplace_open %}
-      <a href="{{ url_for('marketplace.browse') }}" class="btn" style="width:100%;text-align:center">Browse listings</a>
+      <a href="{{ url_for('marketplace.browse') }}" class="btn block hp-offer-open-link">Browse listings →</a>
       {% else %}
-      <p class="hint" style="margin-top:-4px">No storefront yet — join the list and we'll reach out when it opens.</p>
-      <form method="post" action="{{ url_for('affiliate.interest') }}">
+      <form method="post" action="{{ url_for('affiliate.interest') }}" class="hp-offer-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="interest_type" value="buy_channel">
+        <input type="hidden" name="message" id="buy-size-message" value="">
         <input name="name" placeholder="Your name" required>
         <input name="email" type="email" placeholder="Email" required>
-        <button type="submit" style="width:100%">Join the waitlist</button>
+        <input name="phone" type="tel" placeholder="Phone number (+1...)">
+        <div class="hp-size-options" role="group" aria-label="Channel size you want">
+          <input type="radio" name="buy_size" id="size-1" value="1k - 10k" onchange="document.getElementById('buy-size-message').value='Channel size: '+this.value">
+          <label for="size-1">1k - 10k</label>
+          <input type="radio" name="buy_size" id="size-2" value="10k - 50k" onchange="document.getElementById('buy-size-message').value='Channel size: '+this.value">
+          <label for="size-2">10k - 50k</label>
+          <input type="radio" name="buy_size" id="size-3" value="100k+" onchange="document.getElementById('buy-size-message').value='Channel size: '+this.value">
+          <label for="size-3">100k+</label>
+        </div>
+        <button type="submit" class="btn quiet block">Join the waitlist</button>
       </form>
+      {% if whatsapp_number %}
+      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
+         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in "Buy a Channel".') | urlencode }}">
+        Or Live Chat Admin now
+      </a>
+      {% endif %}
+      <p class="hp-offer-proof">412 people ahead of you. Storefront opens in batches.</p>
       {% endif %}
     </div>
-    <div class="card pillar">
-      <h3>0&rarr;1k Master Class {% if not master_class_open %}<span class="pill soon">Coming soon</span>{% endif %}</h3>
-      <p>Learn YouTube as a creator — niche finding, scripting, faceless content, SEO, publishing.
-        Everything it takes to go from 0 to 1,000 subscribers in 30 days.</p>
+
+    <!-- Master Class -->
+    <div class="hp-card hp-offer-card reveal">
+      <span class="hp-offer-eyebrow">Track 03</span>
+      <h3>0→1k Master Class</h3>
+      <p class="pitch">Learn YouTube as a creator — niche finding, scripting, faceless content,
+        SEO and publishing. Everything it takes to go 0 to 1,000 subscribers in 30 days.</p>
+      <ul class="hp-offer-bullets">
+        <li>The exact niche + hook framework our squads run</li>
+        <li>Faceless production stack, start to publish</li>
+        <li>30-day plan with weekly checkpoints</li>
+      </ul>
       {% if master_class_open %}
-      <a href="{{ url_for('master_class.sales') }}" class="btn" style="width:100%;text-align:center">Enroll now</a>
+      <a href="{{ url_for('master_class.sales') }}" class="btn block hp-offer-open-link">Enroll now →</a>
       {% else %}
-      <form method="post" action="{{ url_for('affiliate.interest') }}">
+      <form method="post" action="{{ url_for('affiliate.interest') }}" class="hp-offer-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="interest_type" value="master_class">
         <input name="name" placeholder="Your name" required>
         <input name="email" type="email" placeholder="Email" required>
-        <button type="submit" style="width:100%">Join the waitlist</button>
+        <input name="phone" type="tel" placeholder="Phone number (+1...)">
+        <button type="submit" class="btn quiet block">Join the waitlist</button>
       </form>
+      {% if whatsapp_number %}
+      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
+         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in \"0→1k Master Class\".') | urlencode }}">
+        Or Live Chat Admin now
+      </a>
+      {% endif %}
+      <p class="hp-offer-proof">Founding cohort pricing locked for waitlist only.</p>
       {% endif %}
     </div>
   </div>
+</section>
+
+<!-- HOW -->
+<section class="hp-section" id="how" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(18,20,27,.25)">
+  <h2 class="hp-h2 reveal">How the machine runs</h2>
+  <div class="hp-grid cols-3" style="margin-top:36px">
+    <div class="hp-card hp-step reveal">
+      <span class="n">01</span>
+      <h3>Free teardown</h3>
+      <p>We audit your channel or niche and tell you exactly what's blocking the algorithm.</p>
+    </div>
+    <div class="hp-card hp-step reveal">
+      <span class="n">02</span>
+      <h3>Squad assigned</h3>
+      <p>A clipper, a producer and an operator take over the daily output. You approve, we ship.</p>
+    </div>
+    <div class="hp-card hp-step reveal">
+      <span class="n">03</span>
+      <h3>Monetize &amp; compound</h3>
+      <p>Once revenue lands, we scale format winners and turn the channel into an asset you own.</p>
+    </div>
+  </div>
+</section>
+
+<!-- AFFILIATE -->
+<section class="hp-section" id="affiliate">
+  <div class="hp-affiliate-band reveal">
+    <div class="hp-affiliate-inner">
+      <div>
+        <h2>Earn by sending us people.</h2>
+        <p>Get your own referral link and earn a commission on every prospect who converts —
+          buying a channel, joining the Master Class, or growing with us.</p>
+      </div>
+      <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate →</a>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="hp-section" id="faq">
+  <div class="hp-faq-wrap">
+    <h2 class="hp-h2 reveal" style="text-align:center">Before you ask</h2>
+    <div style="margin-top:30px">
+      <details class="hp-faq reveal">
+        <summary>What if I'm starting from absolute zero?</summary>
+        <p>That's the most common start. We pick the niche, build the format, and run
+          production. You don't need a camera, a face, or an audience.</p>
+      </details>
+      <details class="hp-faq reveal">
+        <summary>How fast do results show up?</summary>
+        <p>First uploads go live inside 7 days of kickoff. Timelines vary by niche and effort —
+          we'll give you a realistic estimate on the teardown call.</p>
+      </details>
+      <details class="hp-faq reveal">
+        <summary>Do I keep ownership of the channel?</summary>
+        <p>Always. The channel, the revenue and the audience are yours. We operate it — we
+          never hold it.</p>
+      </details>
+      <details class="hp-faq reveal">
+        <summary>What does it cost?</summary>
+        <p>It depends on output volume and whether you're growing an existing channel or
+          starting fresh. The teardown call ends with a flat number, no pressure.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="hp-section hp-final">
+  <div class="reveal">
+    <h2>The channel you don't start today is the asset you don't own next year.</h2>
+    <div class="hp-cta-row">
+      <a href="#offers" class="btn">Claim my free teardown</a>
+      {% if whatsapp_number %}
+      <a class="btn quiet" target="_blank" rel="noopener"
+         href="https://wa.me/{{ whatsapp_number }}?text={{ 'Hi MoneyTuber — I want my free channel teardown.' | urlencode }}">
+        Live Chat Admin
+      </a>
+      {% endif %}
+    </div>
+    <p class="fine">7 slots left this week · replies within 24 hours</p>
+  </div>
+</section>
+
+<footer class="hp-foot">&copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.</footer>
+<div class="hp-sticky-cta">
+  <a href="#offers" class="btn block">Claim my free teardown · 7 left</a>
 </div>
 
-<div class="band">
-  <div>
-    <h2>Earn by sending us people.</h2>
-    <p>Sign up, get your own referral link, and earn a commission on every prospect who converts —
-      whether they're buying a channel, joining the Master Class, or growing with us.</p>
-  </div>
-  <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate &rarr;</a>
-</div>
+<script>
+(function () {
+  "use strict";
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Reveal-on-scroll
+  var revealEls = document.querySelectorAll(".reveal");
+  if (reduceMotion || !("IntersectionObserver" in window)) {
+    revealEls.forEach(function (el) { el.classList.add("is-visible"); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  }
+
+  // CountUp
+  var countEls = document.querySelectorAll("[data-countup]");
+  function animateCount(el) {
+    var to = parseFloat(el.getAttribute("data-countup"));
+    var decimals = parseInt(el.getAttribute("data-decimals") || "0", 10);
+    var suffix = el.getAttribute("data-suffix") || "";
+    var duration = 1400;
+    if (reduceMotion) {
+      el.textContent = to.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
+      return;
+    }
+    var start = null;
+    function tick(ts) {
+      if (!start) start = ts;
+      var p = Math.min(1, (ts - start) / duration);
+      var eased = 1 - Math.pow(1 - p, 3);
+      var value = to * eased;
+      el.textContent = value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+  if ("IntersectionObserver" in window) {
+    var countIo = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          animateCount(entry.target);
+          countIo.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.4 });
+    countEls.forEach(function (el) { countIo.observe(el); });
+  } else {
+    countEls.forEach(animateCount);
+  }
+})();
+</script>
 {% endblock %}
+
+{% block footer %}{% endblock %}

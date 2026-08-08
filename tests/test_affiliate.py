@@ -7,6 +7,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -18,6 +19,7 @@ os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8000")
 
 from flask import Response
 from flask_login import login_user
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.test import EnvironBuilder
 
 from app import create_app
@@ -320,13 +322,20 @@ class RoleGateExclusionTests(_DbTestCase):
 
 
 class HomepageRoutingTests(_DbTestCase):
-    def test_anonymous_get_home_redirects_to_login(self):
-        # TEMPORARY, matching the same stopgap in app/auth/routes.py:home() —
-        # update this back to a 200/marketing-page assertion once that
-        # revert happens.
+    def test_anonymous_get_home_renders_marketing_page(self):
         resp = self.client.get("/")
-        self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login", resp.headers["Location"])
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"MoneyTuber", resp.data)
+
+    def test_anonymous_get_home_survives_missing_marketplace_table(self):
+        # Proves the defensive wrap added after the 2026-08-08 production
+        # incident: a broken ChannelListing/MasterClassSettings query must
+        # degrade the homepage, never 500 it.
+        with patch("app.auth.routes.ChannelListing") as mock_listing:
+            mock_listing.query.filter_by.side_effect = SQLAlchemyError("relation does not exist")
+            resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"MoneyTuber", resp.data)
 
     def test_authenticated_redirects_per_role(self):
         cases = {

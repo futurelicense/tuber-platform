@@ -46,6 +46,8 @@ services:
         sync: false
       - key: PAYSTACK_PUBLIC_KEY
         sync: false # only needed if a client-side Paystack flow is added later
+      - key: WHATSAPP_NUMBER
+        sync: false # optional — homepage WhatsApp CTA stays hidden until this is set
     disk:
       name: media-storage
       mountPath: /app/data

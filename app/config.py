@@ -93,6 +93,9 @@ class Config:
     CHANNEL_TOKEN_ENC_KEY = _channel_token_enc_key()
     PAYSTACK_SECRET_KEY = _paystack_secret_key()
     PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+    # Optional — the homepage's WhatsApp CTA only renders when this is set,
+    # so an unconfigured deployment never ships a dead/placeholder number.
+    WHATSAPP_NUMBER = os.environ.get("WHATSAPP_NUMBER", "")
 
     # Same env-configurable-with-local-fallback shape as the vendored
     # Clipper's CLIPPER_DOWNLOAD_DIR (vendor/youtube-clipper/app.py) — falls

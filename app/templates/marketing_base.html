@@ -31,6 +31,7 @@
   .mkt-header nav a.cta{background:var(--brand);color:#fff}
   .mkt-header nav a.cta:hover{background:var(--brand-soft)}
   main{max-width:1100px;margin:0 auto;padding:0 24px}
+  main.full-bleed{max-width:none;padding:0}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
@@ -57,6 +58,7 @@
 </style>
 </head>
 <body>
+{% block header %}
 <header class="mkt-header">
   <a href="{{ url_for('auth.home') }}" style="display:flex;align-items:center;gap:9px">
     <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" style="height:24px">
@@ -67,14 +69,17 @@
     <a href="{{ url_for('auth.login') }}">Log in</a>
   </nav>
 </header>
+{% endblock %}
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% for category, message in messages %}
   <div class="flash {{ category }}" style="margin-left:auto;margin-right:auto">{{ message }}</div>
   {% endfor %}
 {% endwith %}
-<main>
+<main{% block main_attrs %}{% endblock %}>
 {% block content %}{% endblock %}
 </main>
+{% block footer %}
 <footer>&copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.</footer>
+{% endblock %}
 </body>
 </html>

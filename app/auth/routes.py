@@ -2,13 +2,17 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from flask import render_template, request, redirect, url_for, flash, make_response
+from flask import render_template, request, redirect, url_for, flash, make_response, current_app
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy.exc import SQLAlchemyError
 
 from . import bp
 from ..extensions import db
-from ..models import User, LoginEvent
+from ..models import User, LoginEvent, ChannelListing, MasterClassSettings
 from ..geo import lookup_ip
+import logging
+
+logger = logging.getLogger(__name__)
 
 # In-process failed-login throttle, keyed per client IP and per attempted
 # email. Process-local state is sufficient here: production runs a single
@@ -122,13 +126,35 @@ def home():
     """Public marketing homepage for anonymous visitors; sends everyone
     already signed in straight to their tool."""
     if not current_user.is_authenticated:
-        # TEMPORARY (2026-08-08): production's marketplace/master_class
-        # tables were behind on migrations, 500ing this route for every
-        # anonymous visitor. Redirecting straight to login until that's
-        # confirmed fixed for good — revert to rendering home.html (see
-        # git history) once it is. Other marketplace-dependent pages are
-        # unaffected by this and need the actual migration fix regardless.
-        return redirect(url_for("auth.login"))
+        # Defensive: a missing/behind-on-migrations marketplace or
+        # master_class table must never 500 the whole homepage (this
+        # happened in production on 2026-08-08 — a migration lagged behind
+        # a deploy). Degrade to "feature not yet shown" instead of crashing.
+        try:
+            marketplace_open = (
+                ChannelListing.query.filter_by(
+                    status="published", availability="available"
+                ).count()
+                > 0
+            )
+        except SQLAlchemyError:
+            logger.exception("Homepage: ChannelListing query failed, defaulting closed")
+            db.session.rollback()
+            marketplace_open = False
+
+        try:
+            master_class_open = MasterClassSettings.get().is_open_for_enrollment
+        except SQLAlchemyError:
+            logger.exception("Homepage: MasterClassSettings query failed, defaulting closed")
+            db.session.rollback()
+            master_class_open = False
+
+        return render_template(
+            "home.html",
+            master_class_open=master_class_open,
+            marketplace_open=marketplace_open,
+            whatsapp_number=current_app.config.get("WHATSAPP_NUMBER", ""),
+        )
     if current_user.role == "admin":
         return redirect(url_for("admin.dashboard"))
     if current_user.role == "clipper":
