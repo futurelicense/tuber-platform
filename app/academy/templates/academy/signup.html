@@ -1,0 +1,23 @@
+{% extends "academy/base.html" %}
+{% block title %}Join Academy — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:20px auto;padding:26px">
+  <p class="eyebrow">Learner account</p>
+  <h1 style="font-size:28px">Start MoneyTuber Academy</h1>
+  <p class="lede">Create your account to track progress and earn certificates.</p>
+  <form method="post" style="margin-top:20px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="display_name">Name (optional)</label>
+    <input id="display_name" name="display_name" type="text" placeholder="Your name">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" minlength="8" required>
+    <div class="hint">At least 8 characters.</div>
+    <button class="btn block" type="submit">Create account</button>
+  </form>
+  <p class="meta" style="margin-top:14px;text-align:center">
+    Already learning? <a href="{{ url_for('auth.login', next=url_for('academy.home')) }}">Log in</a>
+  </p>
+</div>
+{% endblock %}

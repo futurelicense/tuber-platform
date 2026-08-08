@@ -132,6 +132,11 @@
         <a href="{{ url_for('admin.marketplace_orders') }}" class="{{ 'active' if request.endpoint and (request.endpoint == 'admin.marketplace_orders' or request.endpoint == 'admin.update_order_status' or request.endpoint == 'admin.refund_order') }}">Orders</a>
       </div>
       <div class="nav-group">
+        <div class="nav-label">Academy</div>
+        <a href="{{ url_for('admin.academy_courses') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.academy') }}">Courses</a>
+        <a href="{{ url_for('academy.home') }}" target="_blank">Open learner app ↗</a>
+      </div>
+      <div class="nav-group">
         <div class="nav-label">Tools</div>
         <a href="{{ url_for('admin.watched_channels') }}" class="{{ 'active' if request.endpoint=='admin.watched_channels' }}">Watched channels</a>
       </div>
@@ -158,6 +163,13 @@
       {% if current_user.role == 'affiliate' %}
       <div class="nav-group">
         <a href="{{ url_for('affiliate.dashboard') }}" class="{{ 'active' if request.endpoint=='affiliate.dashboard' }}">Affiliate Dashboard</a>
+      </div>
+      {% endif %}
+      {% if current_user.role == 'learner' %}
+      <div class="nav-group">
+        <a href="{{ url_for('academy.home') }}">Academy</a>
+        <a href="{{ url_for('academy.courses') }}">Courses</a>
+        <a href="{{ url_for('academy.profile') }}">Profile</a>
       </div>
       {% endif %}
     </nav>

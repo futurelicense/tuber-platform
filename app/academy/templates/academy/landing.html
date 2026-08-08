@@ -1,0 +1,72 @@
+{% extends "academy/base.html" %}
+{% block title %}MoneyTuber Academy — Learn AI tools & side-income skills{% endblock %}
+{% block content %}
+<section>
+  <p class="eyebrow">AI learning for operators</p>
+  <h1>Prompting, productivity, and income paths — without the jargon.</h1>
+  <p class="lede">Short courses on Claude, ChatGPT, Gemini, Midjourney and real use cases.
+    Built for creators and operators, not engineers.</p>
+  <div style="margin-top:22px;display:flex;gap:10px;flex-wrap:wrap">
+    <a class="btn" href="{{ url_for('academy.signup') }}">Create free account</a>
+    <a class="btn quiet" href="{{ url_for('academy.courses') }}">Browse courses</a>
+  </div>
+  {% if settings.require_subscription %}
+  <p class="hint" style="margin-top:14px">Subscription {{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }} after signup.</p>
+  {% endif %}
+</section>
+
+{% if tools %}
+<section class="section">
+  <div class="section-head">
+    <h2>Explore AI tools</h2>
+    <a href="{{ url_for('academy.courses', catalog='tool') }}">View all</a>
+  </div>
+  <div class="grid cols-4">
+    {% for c in tools %}
+    <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
+      <div class="course-cover">
+        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+      </div>
+      <div class="course-body">
+        <h3>{{ c.title }}</h3>
+        <div class="meta">
+          {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}{{ c.units|length }} units{% endif %}
+          {% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if use_cases %}
+<section class="section">
+  <div class="section-head">
+    <h2>Discover AI use cases</h2>
+    <a href="{{ url_for('academy.courses', catalog='use_case') }}">View all</a>
+  </div>
+  <div class="grid cols-4">
+    {% for c in use_cases %}
+    <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
+      <div class="course-cover" style="background:linear-gradient(145deg,#201816,#4a1c22)"></div>
+      <div class="course-body">
+        <h3>{{ c.title }}</h3>
+        <div class="meta">
+          {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}Path{% endif %}
+          {% if c.category %} · {{ c.category }}{% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if not tools and not use_cases %}
+<section class="section card" style="padding:28px">
+  <h2>Courses are being authored</h2>
+  <p class="lede">Admins can publish the first paths from <strong>Admin → Academy → Courses</strong>.</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Edit lesson — Academy — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px">
+  <p class="hint" style="margin:0 0 8px">
+    <a href="{{ url_for('admin.academy_course_detail', course_id=lesson.unit.course_id) }}">← {{ lesson.unit.course.title }}</a>
+  </p>
+  <h2>Edit lesson</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="title">Title</label>
+    <input id="title" name="title" value="{{ lesson.title }}" required autofocus>
+
+    <label for="lesson_type">Type</label>
+    <select id="lesson_type" name="lesson_type">
+      {% for t in lesson_types %}
+      <option value="{{ t }}" {{ 'selected' if lesson.lesson_type == t }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="content">Content</label>
+    <textarea id="content" name="content" rows="10">{{ lesson.content or '' }}</textarea>
+    <div class="hint">For interactive lessons, store prompt templates / check instructions here for now.</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label for="estimated_minutes">Estimated minutes</label>
+        <input id="estimated_minutes" name="estimated_minutes" type="number" min="0"
+               value="{{ lesson.estimated_minutes if lesson.estimated_minutes is not none else '' }}">
+      </div>
+      <div>
+        <label for="sort_order">Sort order</label>
+        <input id="sort_order" name="sort_order" type="number" value="{{ lesson.sort_order }}">
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin:12px 0 18px">
+      <input type="checkbox" name="is_published" style="width:auto;margin:0"
+             {{ 'checked' if lesson.is_published }}>
+      Visible on learning path
+    </label>
+
+    <button type="submit">Save lesson</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,3 +1,4 @@
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -27,9 +28,14 @@ from ..models import (
     ChannelListing,
     ChannelOrder,
     ListingAttachment,
+    AcademyCourse,
+    AcademyUnit,
+    AcademyLesson,
+    AcademySettings,
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
 from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
+from ..models.academy import COURSE_CATALOGS, LESSON_TYPES
 from ..uploads import save_image, delete_image, UploadRejected
 from ..marketplace.services import release_listing
 
@@ -73,7 +79,7 @@ def new_user():
         role = request.form.get("role")
         display_name = (request.form.get("display_name") or "").strip()
 
-        if role not in ("clipper", "producer", "admin", "affiliate"):
+        if role not in ("clipper", "producer", "admin", "affiliate", "learner"):
             flash("Invalid role.", "error")
             return render_template("admin/new_user.html")
         if not email:
@@ -748,3 +754,316 @@ def refund_order(order_id):
 
     flash(f"Order #{order.id} marked refunded.", "success")
     return redirect(url_for("admin.marketplace_orders"))
+
+
+# ── Academy ──────────────────────────────────────────────────────────────────
+
+def _slugify(value):
+    slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+    return slug or "course"
+
+
+def _unique_course_slug(title, exclude_id=None):
+    base = _slugify(title)
+    slug = base
+    n = 2
+    while True:
+        q = AcademyCourse.query.filter_by(slug=slug)
+        if exclude_id is not None:
+            q = q.filter(AcademyCourse.id != exclude_id)
+        if q.first() is None:
+            return slug
+        slug = f"{base}-{n}"
+        n += 1
+
+
+def _course_form_fields():
+    return {
+        "title": (request.form.get("title") or "").strip(),
+        "summary": (request.form.get("summary") or "").strip(),
+        "description": (request.form.get("description") or "").strip(),
+        "catalog": request.form.get("catalog") or "tool",
+        "category": (request.form.get("category") or "").strip(),
+        "tags": (request.form.get("tags") or "").strip(),
+        "estimated_lessons": request.form.get("estimated_lessons", type=int),
+        "estimated_hours": request.form.get("estimated_hours", type=float),
+        "cover_image_url": (request.form.get("cover_image_url") or "").strip(),
+        "is_featured": request.form.get("is_featured") == "on",
+        "sort_order": request.form.get("sort_order", type=int) or 0,
+    }
+
+
+@bp.route("/academy/courses")
+def academy_courses():
+    courses = AcademyCourse.query.order_by(
+        AcademyCourse.sort_order.asc(), AcademyCourse.created_at.desc()
+    ).all()
+    settings = AcademySettings.get()
+    return render_template(
+        "admin/academy_courses.html", courses=courses, settings=settings
+    )
+
+
+@bp.route("/academy/settings", methods=["POST"])
+def academy_update_settings():
+    settings = AcademySettings.get()
+    price = request.form.get("price_amount", type=float)
+    currency = (request.form.get("currency") or "").strip().upper()
+    settings.is_open = request.form.get("is_open") == "on"
+    settings.require_subscription = request.form.get("require_subscription") == "on"
+    if price and price > 0:
+        settings.price_amount = price
+    if len(currency) == 3:
+        settings.currency = currency
+    db.session.commit()
+    flash("Academy settings updated.", "success")
+    return redirect(url_for("admin.academy_courses"))
+
+
+@bp.route("/academy/courses/new", methods=["GET", "POST"])
+def academy_new_course():
+    if request.method == "POST":
+        fields = _course_form_fields()
+        if not fields["title"]:
+            flash("Title is required.", "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=None,
+                catalogs=COURSE_CATALOGS,
+            )
+        if fields["catalog"] not in COURSE_CATALOGS:
+            flash("Invalid catalog.", "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=None,
+                catalogs=COURSE_CATALOGS,
+            )
+        course = AcademyCourse(
+            title=fields["title"],
+            slug=_unique_course_slug(fields["title"]),
+            summary=fields["summary"] or None,
+            description=fields["description"] or None,
+            catalog=fields["catalog"],
+            category=fields["category"] or None,
+            tags=fields["tags"] or None,
+            estimated_lessons=fields["estimated_lessons"],
+            estimated_hours=fields["estimated_hours"],
+            cover_image_url=fields["cover_image_url"] or None,
+            is_featured=fields["is_featured"],
+            sort_order=fields["sort_order"],
+            status="draft",
+            created_by_id=current_user.id,
+        )
+        db.session.add(course)
+        db.session.commit()
+        flash(f"Course '{course.title}' created as draft.", "success")
+        return redirect(url_for("admin.academy_course_detail", course_id=course.id))
+    return render_template(
+        "admin/academy_course_form.html", course=None, catalogs=COURSE_CATALOGS
+    )
+
+
+@bp.route("/academy/courses/<int:course_id>")
+def academy_course_detail(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    return render_template(
+        "admin/academy_course_detail.html",
+        course=course,
+        lesson_types=LESSON_TYPES,
+    )
+
+
+@bp.route("/academy/courses/<int:course_id>/edit", methods=["GET", "POST"])
+def academy_edit_course(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    if request.method == "POST":
+        fields = _course_form_fields()
+        if not fields["title"]:
+            flash("Title is required.", "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=course,
+                catalogs=COURSE_CATALOGS,
+            )
+        if fields["catalog"] not in COURSE_CATALOGS:
+            flash("Invalid catalog.", "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=course,
+                catalogs=COURSE_CATALOGS,
+            )
+        if course.title != fields["title"]:
+            course.slug = _unique_course_slug(fields["title"], exclude_id=course.id)
+        course.title = fields["title"]
+        course.summary = fields["summary"] or None
+        course.description = fields["description"] or None
+        course.catalog = fields["catalog"]
+        course.category = fields["category"] or None
+        course.tags = fields["tags"] or None
+        course.estimated_lessons = fields["estimated_lessons"]
+        course.estimated_hours = fields["estimated_hours"]
+        course.cover_image_url = fields["cover_image_url"] or None
+        course.is_featured = fields["is_featured"]
+        course.sort_order = fields["sort_order"]
+        db.session.commit()
+        flash("Course updated.", "success")
+        return redirect(url_for("admin.academy_course_detail", course_id=course.id))
+    return render_template(
+        "admin/academy_course_form.html", course=course, catalogs=COURSE_CATALOGS
+    )
+
+
+@bp.route("/academy/courses/<int:course_id>/publish", methods=["POST"])
+def academy_publish_course(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    course.status = "published"
+    db.session.commit()
+    flash(f"'{course.title}' published.", "success")
+    return redirect(url_for("admin.academy_courses"))
+
+
+@bp.route("/academy/courses/<int:course_id>/unpublish", methods=["POST"])
+def academy_unpublish_course(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    course.status = "draft"
+    db.session.commit()
+    flash(f"'{course.title}' moved back to draft.", "success")
+    return redirect(url_for("admin.academy_courses"))
+
+
+@bp.route("/academy/courses/<int:course_id>/archive", methods=["POST"])
+def academy_archive_course(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    course.status = "archived"
+    db.session.commit()
+    flash(f"'{course.title}' archived.", "success")
+    return redirect(url_for("admin.academy_courses"))
+
+
+@bp.route("/academy/courses/<int:course_id>/units", methods=["POST"])
+def academy_add_unit(course_id):
+    course = AcademyCourse.query.get_or_404(course_id)
+    title = (request.form.get("title") or "").strip()
+    section_label = (request.form.get("section_label") or "").strip()
+    if not title:
+        flash("Unit title is required.", "error")
+        return redirect(url_for("admin.academy_course_detail", course_id=course.id))
+    next_order = (max((u.sort_order for u in course.units), default=-1) + 1)
+    unit = AcademyUnit(
+        course_id=course.id,
+        title=title,
+        section_label=section_label or None,
+        sort_order=next_order,
+    )
+    db.session.add(unit)
+    db.session.commit()
+    flash(f"Unit '{unit.title}' added.", "success")
+    return redirect(url_for("admin.academy_course_detail", course_id=course.id))
+
+
+@bp.route("/academy/units/<int:unit_id>/edit", methods=["POST"])
+def academy_edit_unit(unit_id):
+    unit = AcademyUnit.query.get_or_404(unit_id)
+    title = (request.form.get("title") or "").strip()
+    section_label = (request.form.get("section_label") or "").strip()
+    sort_order = request.form.get("sort_order", type=int)
+    if not title:
+        flash("Unit title is required.", "error")
+        return redirect(url_for("admin.academy_course_detail", course_id=unit.course_id))
+    unit.title = title
+    unit.section_label = section_label or None
+    if sort_order is not None:
+        unit.sort_order = sort_order
+    db.session.commit()
+    flash("Unit updated.", "success")
+    return redirect(url_for("admin.academy_course_detail", course_id=unit.course_id))
+
+
+@bp.route("/academy/units/<int:unit_id>/delete", methods=["POST"])
+def academy_delete_unit(unit_id):
+    unit = AcademyUnit.query.get_or_404(unit_id)
+    course_id = unit.course_id
+    db.session.delete(unit)
+    db.session.commit()
+    flash("Unit deleted.", "success")
+    return redirect(url_for("admin.academy_course_detail", course_id=course_id))
+
+
+@bp.route("/academy/units/<int:unit_id>/lessons", methods=["POST"])
+def academy_add_lesson(unit_id):
+    unit = AcademyUnit.query.get_or_404(unit_id)
+    title = (request.form.get("title") or "").strip()
+    lesson_type = request.form.get("lesson_type") or "read"
+    content = (request.form.get("content") or "").strip()
+    estimated_minutes = request.form.get("estimated_minutes", type=int)
+    if not title:
+        flash("Lesson title is required.", "error")
+        return redirect(url_for("admin.academy_course_detail", course_id=unit.course_id))
+    if lesson_type not in LESSON_TYPES:
+        flash("Invalid lesson type.", "error")
+        return redirect(url_for("admin.academy_course_detail", course_id=unit.course_id))
+    next_order = (max((l.sort_order for l in unit.lessons), default=-1) + 1)
+    lesson = AcademyLesson(
+        unit_id=unit.id,
+        title=title,
+        lesson_type=lesson_type,
+        content=content or None,
+        estimated_minutes=estimated_minutes,
+        sort_order=next_order,
+        is_published=True,
+    )
+    db.session.add(lesson)
+    db.session.commit()
+    flash(f"Lesson '{lesson.title}' added.", "success")
+    return redirect(url_for("admin.academy_course_detail", course_id=unit.course_id))
+
+
+@bp.route("/academy/lessons/<int:lesson_id>/edit", methods=["GET", "POST"])
+def academy_edit_lesson(lesson_id):
+    lesson = AcademyLesson.query.get_or_404(lesson_id)
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        lesson_type = request.form.get("lesson_type") or "read"
+        content = (request.form.get("content") or "").strip()
+        estimated_minutes = request.form.get("estimated_minutes", type=int)
+        sort_order = request.form.get("sort_order", type=int)
+        is_published = request.form.get("is_published") == "on"
+        if not title:
+            flash("Lesson title is required.", "error")
+            return render_template(
+                "admin/academy_lesson_form.html",
+                lesson=lesson,
+                lesson_types=LESSON_TYPES,
+            )
+        if lesson_type not in LESSON_TYPES:
+            flash("Invalid lesson type.", "error")
+            return render_template(
+                "admin/academy_lesson_form.html",
+                lesson=lesson,
+                lesson_types=LESSON_TYPES,
+            )
+        lesson.title = title
+        lesson.lesson_type = lesson_type
+        lesson.content = content or None
+        lesson.estimated_minutes = estimated_minutes
+        if sort_order is not None:
+            lesson.sort_order = sort_order
+        lesson.is_published = is_published
+        db.session.commit()
+        flash("Lesson updated.", "success")
+        return redirect(
+            url_for("admin.academy_course_detail", course_id=lesson.unit.course_id)
+        )
+    return render_template(
+        "admin/academy_lesson_form.html", lesson=lesson, lesson_types=LESSON_TYPES
+    )
+
+
+@bp.route("/academy/lessons/<int:lesson_id>/delete", methods=["POST"])
+def academy_delete_lesson(lesson_id):
+    lesson = AcademyLesson.query.get_or_404(lesson_id)
+    course_id = lesson.unit.course_id
+    db.session.delete(lesson)
+    db.session.commit()
+    flash("Lesson deleted.", "success")
+    return redirect(url_for("admin.academy_course_detail", course_id=course_id))

@@ -1,0 +1,49 @@
+{% extends "academy/base.html" %}
+{% block title %}Courses — MoneyTuber Academy{% endblock %}
+{% block content %}
+<section>
+  <p class="eyebrow">Catalog</p>
+  <h1>{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}All courses{% endif %}</h1>
+  <div class="filters">
+    <a href="{{ url_for('academy.courses') }}" class="{{ 'active' if not active_catalog }}">All</a>
+    <a href="{{ url_for('academy.courses', catalog='tool') }}" class="{{ 'active' if active_catalog=='tool' }}">AI tools</a>
+    <a href="{{ url_for('academy.courses', catalog='use_case') }}" class="{{ 'active' if active_catalog=='use_case' }}">Use cases</a>
+    <a href="{{ url_for('academy.courses', catalog='challenge') }}" class="{{ 'active' if active_catalog=='challenge' }}">Challenges</a>
+    {% for cat in categories %}
+    <a href="{{ url_for('academy.courses', catalog=active_catalog, category=cat) if active_catalog else url_for('academy.courses', category=cat) }}"
+       class="{{ 'active' if active_category==cat }}">{{ cat }}</a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section" style="margin-top:18px">
+  {% if courses %}
+  <div class="grid cols-3">
+    {% for c in courses %}
+    <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
+      <div class="course-cover">{% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}</div>
+      <div class="course-body">
+        {% if c.category %}<span class="pill">{{ c.category }}</span>{% endif %}
+        <h3>{{ c.title }}</h3>
+        {% if c.summary %}<div class="meta">{{ c.summary }}</div>{% endif %}
+        <div class="meta">
+          {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}{{ c.units|length }} units{% endif %}
+          {% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}
+        </div>
+        {% if progress.get(c.id) %}
+        <div class="bar"><i style="width:{{ progress[c.id] }}%"></i></div>
+        {% else %}
+        <div class="bar"><i style="width:0%"></i></div>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="padding:28px">
+    <h2>No published courses here yet</h2>
+    <p class="lede">Publish from Admin → Academy → Courses.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

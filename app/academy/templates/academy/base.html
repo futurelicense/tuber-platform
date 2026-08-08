@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Academy — MoneyTuber{% endblock %}</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='brand/favicon.png') }}">
+<style>
+  :root{
+    --ink:#0b0d12;--bg:#f4f5f7;--card:#fff;--line:#e6e8ee;--text:#14171f;
+    --muted:#6b7280;--faint:#9aa0ad;--brand:#e5111c;--brand-soft:#ff5b63;
+    --ok:#16a34a;--track:#eceef3;--shadow:0 10px 30px -18px rgba(15,18,28,.35);
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+  a{color:var(--brand);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .ac-top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .ac-top-inner{max-width:1120px;margin:0 auto;padding:12px 20px;display:flex;
+    align-items:center;justify-content:space-between;gap:16px}
+  .ac-brand{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--text);font-size:16px}
+  .ac-brand:hover{text-decoration:none}
+  .ac-brand .accent{color:var(--brand)}
+  .ac-nav{display:flex;gap:18px;align-items:center}
+  @media (max-width:720px){ .ac-nav .hide-sm{display:none} }
+  .ac-nav a{color:var(--muted);font-size:13.5px;font-weight:700}
+  .ac-nav a:hover,.ac-nav a.active{color:var(--text);text-decoration:none}
+  .ac-nav .cta{background:var(--brand);color:#fff;padding:8px 14px;border-radius:10px}
+  .ac-nav .cta:hover{background:var(--brand-soft);color:#fff}
+  main{max-width:1120px;margin:0 auto;padding:28px 20px 72px}
+  .flash{padding:10px 14px;border-radius:10px;margin:0 0 18px;font-size:13px}
+  .flash.error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+  .flash.success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--brand);color:#fff;border:none;border-radius:12px;padding:12px 18px;
+    font-size:14px;font-weight:750;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--brand-soft);text-decoration:none;color:#fff}
+  .btn.quiet{background:#fff;color:var(--text);border:1px solid var(--line)}
+  .btn.quiet:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.block{width:100%}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--brand)}
+  h1{margin:8px 0 0;font-size:34px;line-height:1.1;letter-spacing:-.02em}
+  h2{margin:0;font-size:22px;letter-spacing:-.015em}
+  .lede{margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.55;max-width:560px}
+  .section{margin-top:36px}
+  .section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:14px}
+  .section-head a{font-size:13px;font-weight:700}
+  .grid{display:grid;gap:14px}
+  .grid.cols-2{grid-template-columns:repeat(2,1fr)}
+  .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+  .grid.cols-4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:900px){ .grid.cols-4,.grid.cols-3{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:560px){ .grid.cols-4,.grid.cols-3,.grid.cols-2{grid-template-columns:1fr} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .course-card{display:flex;flex-direction:column;overflow:hidden;color:inherit}
+  .course-card:hover{text-decoration:none;border-color:#f0a0a4;transform:translateY(-2px);transition:.2s}
+  .course-cover{height:120px;background:linear-gradient(145deg,#1b1e26,#3a1520);position:relative}
+  .course-cover img{width:100%;height:100%;object-fit:cover;display:block}
+  .course-body{padding:14px 14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
+  .course-body h3{margin:0;font-size:16px;line-height:1.25}
+  .meta{font-size:12px;color:var(--muted);font-weight:600}
+  .bar{height:5px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:auto}
+  .bar>i{display:block;height:100%;background:var(--brand);border-radius:99px}
+  .pill{display:inline-flex;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.06em;background:#fff1f2;color:var(--brand)}
+  .pill.ok{background:#dcfce7;color:#166534}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px}
+  .filters a{padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;
+    color:var(--muted);font-size:12.5px;font-weight:700}
+  .filters a:hover,.filters a.active{text-decoration:none;background:var(--ink);color:#fff;border-color:var(--ink)}
+  label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:0 0 6px}
+  input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;
+    font:inherit;margin-bottom:12px;background:#fff}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
+  .hint{color:var(--faint);font-size:12px;margin-top:-6px;margin-bottom:12px}
+  footer.ac-foot{border-top:1px solid var(--line);padding:22px;text-align:center;color:var(--faint);font-size:12px}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="ac-top">
+  <div class="ac-top-inner">
+    <a class="ac-brand" href="{{ url_for('academy.home') }}">
+      <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" height="22">
+      <span>Money<span class="accent">Tuber</span> Academy</span>
+    </a>
+    <nav class="ac-nav">
+      <a class="hide-sm {{ 'active' if request.endpoint=='academy.home' }}" href="{{ url_for('academy.home') }}">Home</a>
+      <a class="{{ 'active' if request.endpoint=='academy.courses' or request.endpoint=='academy.course_detail' }}" href="{{ url_for('academy.courses') }}">Courses</a>
+      {% if current_user.is_authenticated %}
+      <a class="hide-sm {{ 'active' if request.endpoint=='academy.profile' }}" href="{{ url_for('academy.profile') }}">Profile</a>
+      <a href="{{ url_for('auth.logout') }}">Log out</a>
+      {% else %}
+      <a href="{{ url_for('auth.login', next=url_for('academy.home')) }}">Log in</a>
+      <a class="cta" href="{{ url_for('academy.signup') }}">Start free</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="ac-foot">&copy; {{ current_year }} MoneyTuber Academy</footer>
+</body>
+</html>

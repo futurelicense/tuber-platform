@@ -29,6 +29,7 @@ def create_app(config_class=Config):
     from .affiliate import bp as affiliate_bp
     from .master_class import bp as master_class_bp
     from .marketplace import bp as marketplace_bp
+    from .academy import bp as academy_bp
     from .webhooks import bp as webhooks_bp
 
     app.register_blueprint(auth_bp)
@@ -38,6 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(affiliate_bp)
     app.register_blueprint(master_class_bp)
     app.register_blueprint(marketplace_bp)
+    app.register_blueprint(academy_bp)
     app.register_blueprint(webhooks_bp)
 
     @app.context_processor

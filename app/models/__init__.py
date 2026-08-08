@@ -6,6 +6,14 @@ from .agent import WatchedChannel, DiscoveredVideo, SuggestedClip
 from .master_class import MasterClassEnrollment, MasterClassSettings
 from .marketplace import ChannelListing, ChannelOrder, ListingAttachment
 from .affiliate import Prospect, Commission, AffiliateProgramSettings, effective_commission_rate
+from .academy import (
+    AcademyCourse,
+    AcademyUnit,
+    AcademyLesson,
+    AcademyLessonProgress,
+    AcademySettings,
+    AcademySubscription,
+)
 
 __all__ = [
     "User",
@@ -27,4 +35,10 @@ __all__ = [
     "ChannelListing",
     "ChannelOrder",
     "ListingAttachment",
+    "AcademyCourse",
+    "AcademyUnit",
+    "AcademyLesson",
+    "AcademyLessonProgress",
+    "AcademySettings",
+    "AcademySubscription",
 ]

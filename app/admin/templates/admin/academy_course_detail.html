@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}{{ course.title }} — Academy — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <p class="hint" style="margin:0">
+        <a href="{{ url_for('admin.academy_courses') }}">← Courses</a>
+      </p>
+      <h2 style="margin:8px 0 0">{{ course.title }}</h2>
+      <p class="hint" style="margin:8px 0 0">
+        <span class="pill {{ 'ok' if course.status == 'published' else 'off' }}">{{ course.status }}</span>
+        · {{ course.catalog.replace('_', ' ') }}
+        {% if course.category %} · {{ course.category }}{% endif %}
+        · slug <code>{{ course.slug }}</code>
+      </p>
+      {% if course.summary %}<p style="margin:12px 0 0;color:var(--muted)">{{ course.summary }}</p>{% endif %}
+    </div>
+    <a href="{{ url_for('admin.academy_edit_course', course_id=course.id) }}"><button type="button" class="secondary">Edit course</button></a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2>Add unit</h2>
+  <form method="post" action="{{ url_for('admin.academy_add_unit', course_id=course.id) }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="min-width:220px;flex:1">
+      <label for="unit_title">Unit title</label>
+      <input id="unit_title" name="title" required placeholder="UNIT 1 Gemini">
+    </div>
+    <div style="min-width:200px;flex:1">
+      <label for="section_label">Section break label (optional)</label>
+      <input id="section_label" name="section_label" placeholder="Build Reliable Workflows">
+    </div>
+    <div><button type="submit" style="margin-bottom:14px">Add unit</button></div>
+  </form>
+</div>
+
+{% for unit in course.units %}
+<div class="card" style="margin-bottom:18px">
+  <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">
+    <div>
+      <h2 style="margin:0">{{ unit.title }}</h2>
+      {% if unit.section_label %}<p class="hint" style="margin:6px 0 0">Section: {{ unit.section_label }}</p>{% endif %}
+      <p class="hint" style="margin:4px 0 0">{{ unit.lessons|length }} lesson{{ '' if unit.lessons|length == 1 else 's' }} · order {{ unit.sort_order }}</p>
+    </div>
+    <form method="post" action="{{ url_for('admin.academy_delete_unit', unit_id=unit.id) }}"
+          onsubmit="return confirm('Delete this unit and all its lessons?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="danger">Delete unit</button>
+    </form>
+  </div>
+
+  <form method="post" action="{{ url_for('admin.academy_edit_unit', unit_id=unit.id) }}"
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="min-width:180px;flex:1">
+      <label>Title</label>
+      <input name="title" value="{{ unit.title }}" required>
+    </div>
+    <div style="min-width:160px;flex:1">
+      <label>Section label</label>
+      <input name="section_label" value="{{ unit.section_label or '' }}">
+    </div>
+    <div style="width:100px">
+      <label>Order</label>
+      <input name="sort_order" type="number" value="{{ unit.sort_order }}">
+    </div>
+    <div><button type="submit" class="secondary" style="margin-bottom:14px">Save unit</button></div>
+  </form>
+
+  <h3 style="margin:0 0 10px;font-size:14px">Lessons</h3>
+  <table style="margin-bottom:16px">
+    <tr><th>Title</th><th>Type</th><th>Minutes</th><th>Order</th><th></th></tr>
+    {% for lesson in unit.lessons %}
+    <tr>
+      <td>{{ lesson.title }}{% if not lesson.is_published %} <span class="pill off">hidden</span>{% endif %}</td>
+      <td>{{ lesson.lesson_type }}</td>
+      <td>{{ lesson.estimated_minutes if lesson.estimated_minutes is not none else '—' }}</td>
+      <td>{{ lesson.sort_order }}</td>
+      <td style="display:flex;gap:8px">
+        <a href="{{ url_for('admin.academy_edit_lesson', lesson_id=lesson.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('admin.academy_delete_lesson', lesson_id=lesson.id) }}"
+              onsubmit="return confirm('Delete this lesson?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--faint)">No lessons in this unit yet.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('admin.academy_add_lesson', unit_id=unit.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="display:grid;grid-template-columns:1.4fr .8fr .6fr;gap:12px">
+      <div>
+        <label>Lesson title</label>
+        <input name="title" required placeholder="Meet Gemini">
+      </div>
+      <div>
+        <label>Type</label>
+        <select name="lesson_type">
+          {% for t in lesson_types %}
+          <option value="{{ t }}">{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Minutes</label>
+        <input name="estimated_minutes" type="number" min="0" placeholder="10">
+      </div>
+    </div>
+    <label for="content-{{ unit.id }}">Content / script (optional)</label>
+    <textarea id="content-{{ unit.id }}" name="content" rows="3"
+              placeholder="Lesson body, prompt drill copy, or notes for Read/Listen/Interactive"></textarea>
+    <button type="submit">Add lesson</button>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <p class="hint" style="margin:0">No units yet — add UNIT 1 to start the learning path.</p>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "academy/base.html" %}
+{% block title %}Profile — Academy{% endblock %}
+{% block content %}
+<section class="card" style="padding:22px;margin-bottom:18px">
+  <div style="display:flex;gap:14px;align-items:center">
+    <div style="width:52px;height:52px;border-radius:50%;background:#fff1f2;color:var(--brand);
+      display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">
+      {{ (current_user.display_name or current_user.email)[0]|upper }}
+    </div>
+    <div>
+      <h1 style="font-size:24px;margin:0">{{ current_user.display_name or 'Learner' }}</h1>
+      <div class="meta">{{ current_user.email }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="grid cols-3" style="margin-bottom:18px">
+  <div class="card" style="padding:18px">
+    <div class="meta">Lessons completed</div>
+    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ completed_count }}</div>
+  </div>
+  <div class="card" style="padding:18px">
+    <div class="meta">Subscription</div>
+    <div style="font-size:18px;font-weight:800;margin-top:10px">
+      {% if subscription %}{{ subscription.status }}{% else %}none{% endif %}
+    </div>
+  </div>
+  <div class="card" style="padding:18px">
+    <div class="meta">Courses in catalog</div>
+    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ courses|length }}</div>
+  </div>
+</section>
+
+<section class="card" style="padding:18px">
+  <h2>Your course progress</h2>
+  <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:14px">
+    <tr style="text-align:left;color:var(--muted)">
+      <th style="padding:8px 0;border-bottom:1px solid var(--line)">Course</th>
+      <th style="padding:8px 0;border-bottom:1px solid var(--line)">Progress</th>
+      <th style="padding:8px 0;border-bottom:1px solid var(--line)"></th>
+    </tr>
+    {% for c in courses %}
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid var(--line)">{{ c.title }}</td>
+      <td style="padding:10px 0;border-bottom:1px solid var(--line);min-width:140px">
+        <div class="bar"><i style="width:{{ progress.get(c.id, 0) }}%"></i></div>
+        <div class="meta" style="margin-top:4px">{{ progress.get(c.id, 0) }}%</div>
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid var(--line)">
+        <a href="{{ url_for('academy.course_detail', slug=c.slug) }}">Open</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="meta" style="padding:14px 0">No published courses yet.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

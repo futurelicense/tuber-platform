@@ -1,0 +1,31 @@
+{% extends "academy/base.html" %}
+{% block title %}{{ lesson.title }} — {{ course.title }}{% endblock %}
+{% block content %}
+<div style="max-width:720px;margin:0 auto">
+  <p class="meta">
+    <a href="{{ url_for('academy.course_detail', slug=course.slug) }}">← {{ course.title }}</a>
+    · {{ unit.title }} · {{ percent }}%
+  </p>
+  <p class="eyebrow" style="margin-top:14px">{{ lesson.lesson_type }}</p>
+  <h1>{{ lesson.title }}</h1>
+
+  <article class="card" style="padding:22px;margin-top:18px;line-height:1.7;font-size:15.5px;white-space:pre-wrap">
+{% if lesson.content %}{{ lesson.content }}{% else %}<span class="meta">No lesson content yet — add it in Admin → Academy.</span>{% endif %}
+  </article>
+
+  <form method="post" style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if progress_row and progress_row.status == 'completed' %}
+    <span class="pill ok">Completed</span>
+    {% else %}
+    <button class="btn" type="submit" name="action" value="complete">Mark complete{% if next_lesson %} &amp; continue{% endif %}</button>
+    {% endif %}
+    {% if prev_lesson %}
+    <a class="btn quiet" href="{{ url_for('academy.lesson', lesson_id=prev_lesson.id) }}">Previous</a>
+    {% endif %}
+    {% if next_lesson %}
+    <a class="btn quiet" href="{{ url_for('academy.lesson', lesson_id=next_lesson.id) }}">Next</a>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

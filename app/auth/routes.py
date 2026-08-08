@@ -98,7 +98,13 @@ def login():
             # protocol-relative URL — an open redirect on the login page.
             if next_url and next_url.startswith("/") and not next_url.startswith(("//", "/\\")):
                 return redirect(next_url)
-            return redirect(url_for("admin.dashboard" if user.role == "admin" else "auth.home"))
+            if user.role == "admin":
+                return redirect(url_for("admin.dashboard"))
+            if user.role == "learner":
+                return redirect(url_for("academy.home"))
+            if user.role == "affiliate":
+                return redirect(url_for("affiliate.dashboard"))
+            return redirect(url_for("auth.home"))
 
         # Recorded whether or not the email matched a real account — a
         # credential-stuffing run against guessed emails should be visible in
@@ -167,4 +173,6 @@ def home():
         return redirect(url_for("producer_scout.new"))
     if current_user.role == "affiliate":
         return redirect(url_for("affiliate.dashboard"))
+    if current_user.role == "learner":
+        return redirect(url_for("academy.home"))
     return redirect(url_for("auth.login"))

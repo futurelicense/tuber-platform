@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Academy courses — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2>Academy settings</h2>
+  <p class="hint">Learner app lives at <a href="{{ url_for('academy.home') }}" target="_blank">/academy</a>.</p>
+  <form method="post" action="{{ url_for('admin.academy_update_settings') }}"
+        style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="max-width:140px">
+      <label for="price_amount">Price</label>
+      <input id="price_amount" name="price_amount" type="number" step="0.01" min="0"
+             value="{{ settings.price_amount }}" required>
+    </div>
+    <div style="max-width:100px">
+      <label for="currency">Currency</label>
+      <input id="currency" name="currency" maxlength="3" value="{{ settings.currency }}" required>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <input type="checkbox" name="is_open" style="width:auto;margin:0" {{ 'checked' if settings.is_open }}>
+      Open for learners
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <input type="checkbox" name="require_subscription" style="width:auto;margin:0"
+             {{ 'checked' if settings.require_subscription }}>
+      Require subscription
+    </label>
+    <div><button type="submit" style="margin-bottom:14px">Save settings</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap">
+    <div>
+      <h2 style="margin:0">Academy courses</h2>
+      <p class="hint" style="margin:6px 0 0">Author tool courses, use-case paths, and challenges. Curriculum is built as units → lessons.</p>
+    </div>
+    <a href="{{ url_for('admin.academy_new_course') }}"><button type="button">New course</button></a>
+  </div>
+  <table>
+    <tr>
+      <th>Title</th>
+      <th>Catalog</th>
+      <th>Category</th>
+      <th>Units</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+    {% for c in courses %}
+    <tr>
+      <td>
+        <a href="{{ url_for('admin.academy_course_detail', course_id=c.id) }}">{{ c.title }}</a>
+        {% if c.is_featured %}<span class="pill ok" style="margin-left:6px">featured</span>{% endif %}
+      </td>
+      <td>{{ c.catalog.replace('_', ' ') }}</td>
+      <td>{{ c.category or '—' }}</td>
+      <td>{{ c.units|length }}</td>
+      <td><span class="pill {{ 'ok' if c.status == 'published' else 'off' }}">{{ c.status }}</span></td>
+      <td style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('admin.academy_course_detail', course_id=c.id) }}">Curriculum</a>
+        <a href="{{ url_for('admin.academy_edit_course', course_id=c.id) }}">Edit</a>
+        {% if c.status != 'published' %}
+        <form method="post" action="{{ url_for('admin.academy_publish_course', course_id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">Publish</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('admin.academy_unpublish_course', course_id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">Unpublish</button>
+        </form>
+        {% endif %}
+        {% if c.status != 'archived' %}
+        <form method="post" action="{{ url_for('admin.academy_archive_course', course_id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Archive</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--faint)">No Academy courses yet — create the first one.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "academy/base.html" %}
+{% block title %}{{ course.title }} — Academy{% endblock %}
+{% block head %}
+<style>
+  .path-layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
+  @media (max-width:860px){ .path-layout{grid-template-columns:1fr} }
+  .path-side{position:sticky;top:78px}
+  .path-side .card{padding:18px}
+  .path{display:flex;flex-direction:column;gap:0;padding:10px 0}
+  .path-item{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start;padding:10px 0}
+  .node{width:28px;height:28px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:800;border:2px solid var(--line);background:#fff;color:var(--muted)}
+  .node.done{background:var(--ok);border-color:var(--ok);color:#fff}
+  .node.active{background:var(--brand);border-color:var(--brand);color:#fff}
+  .path-item + .path-item .rail{/* spacer */}
+  .section-break{margin:14px 0 6px;padding-top:14px;border-top:1px solid var(--line);
+    font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+</style>
+{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:18px">
+  <div>
+    <p class="eyebrow">{{ course.catalog.replace('_',' ') }}{% if course.category %} · {{ course.category }}{% endif %}</p>
+    <h1>{{ course.title }}</h1>
+    {% if course.summary %}<p class="lede">{{ course.summary }}</p>{% endif %}
+  </div>
+  <span class="pill">{{ percent }}% complete</span>
+</div>
+
+<div class="path-layout">
+  <aside class="path-side">
+    <div class="card">
+      <div class="eyebrow">Certificate</div>
+      <h2 style="font-size:18px;margin-top:8px">Earn your certificate</h2>
+      <p class="meta" style="margin-top:8px">Keep going to unlock completion for this path.</p>
+      <div class="bar" style="margin-top:14px"><i style="width:{{ percent }}%"></i></div>
+      <div class="meta" style="margin-top:8px">{{ percent }}%</div>
+      {% if next_lesson and can_learn %}
+      <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.lesson', lesson_id=next_lesson.id) }}">
+        {{ 'Continue' if percent > 0 else 'Start' }}
+      </a>
+      {% elif not can_learn %}
+      <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.signup') }}">Start free to learn</a>
+      {% endif %}
+    </div>
+  </aside>
+
+  <section class="card" style="padding:18px 20px">
+    {% for unit in course.units %}
+      {% if unit.section_label %}<div class="section-break">{{ unit.section_label }}</div>{% endif %}
+      <div class="eyebrow" style="margin-top:8px">{{ unit.title }}</div>
+      <div class="path">
+        {% for lesson in unit.lessons if lesson.is_published %}
+        {% set row = progress_by_id.get(lesson.id) %}
+        {% set done = row and row.status == 'completed' %}
+        {% set active = next_lesson and next_lesson.id == lesson.id %}
+        <div class="path-item">
+          <div class="node {{ 'done' if done else ('active' if active else '') }}">
+            {% if done %}✓{% elif lesson.lesson_type == 'interactive' %}✦{% else %}{{ loop.index }}{% endif %}
+          </div>
+          <div>
+            <div style="font-weight:750">
+              {% if can_learn %}
+              <a href="{{ url_for('academy.lesson', lesson_id=lesson.id) }}" style="color:inherit">{{ lesson.title }}</a>
+              {% else %}
+              {{ lesson.title }}
+              {% endif %}
+            </div>
+            <div class="meta">{{ lesson.lesson_type }}{% if lesson.estimated_minutes %} · {{ lesson.estimated_minutes }} min{% endif %}</div>
+          </div>
+        </div>
+        {% else %}
+        <p class="meta">No published lessons in this unit yet.</p>
+        {% endfor %}
+      </div>
+    {% else %}
+    <p class="meta">Curriculum coming soon.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
