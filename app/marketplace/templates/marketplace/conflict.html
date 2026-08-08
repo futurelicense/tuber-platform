@@ -1,11 +1,21 @@
 {% extends "marketing_base.html" %}
-{% block title %}We need to sort this out — MoneyTuber{% endblock %}
+{% block title %}Payment conflict — MoneyTuber{% endblock %}
+{% block main_attrs %} class="full-bleed"{% endblock %}
 {% block content %}
-<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
-  <h2 style="margin-top:0">Your payment went through, but there's a mix-up</h2>
-  <p class="hint">This channel was sold to another buyer moments before your payment confirmed.
-    You haven't lost anything — reach out to us at {{ order.buyer_email }} and we'll refund you
-    or help you pick a different listing right away.</p>
-  <a href="{{ url_for('marketplace.browse') }}" class="btn">Browse other channels</a>
+<style>
+  .mp-end{max-width:520px;margin:72px auto;padding:0 24px 80px;text-align:center}
+  .mp-end-card{background:var(--panel);border:1px solid rgba(255,177,60,.35);border-radius:18px;
+    padding:36px 28px;box-shadow:0 24px 60px -34px rgba(0,0,0,.9)}
+  .mp-end-card h2{margin:0;font-size:28px;font-weight:800}
+  .mp-end-card p{margin:12px 0 0;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .mp-end-card .btn{margin-top:24px}
+</style>
+<div class="mp-end">
+  <div class="mp-end-card">
+    <h2>This listing just moved</h2>
+    <p>Payment came through, but another buyer edge-cased the reservation. Our team will contact
+      you to resolve it — you won’t be left hanging.</p>
+    <a href="{{ url_for('marketplace.browse') }}" class="btn">Browse other channels</a>
+  </div>
 </div>
 {% endblock %}

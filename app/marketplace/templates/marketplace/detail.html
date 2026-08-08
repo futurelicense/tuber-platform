@@ -1,57 +1,191 @@
 {% extends "marketing_base.html" %}
 {% block title %}{{ listing.title }} — MoneyTuber{% endblock %}
-{% block content %}
-<div class="card" style="max-width:520px;margin:40px auto">
-  <h2 style="margin-top:0">{{ listing.title }}</h2>
-  <span class="pill {{ 'ok' if listing.monetization_status == 'monetized' else 'off' }}">
-    {{ listing.monetization_status }}
-  </span>
-  {% if listing.niche %}<span class="hint" style="margin:8px 0 0">{{ listing.niche }}</span>{% endif %}
-  {% if listing.description %}<p style="margin:14px 0">{{ listing.description }}</p>{% endif %}
-  <ul style="color:var(--muted);font-size:13.5px;line-height:1.8;padding-left:18px">
-    {% if listing.subscriber_count %}<li>{{ '{:,}'.format(listing.subscriber_count) }} subscribers</li>{% endif %}
-    {% if listing.total_views %}<li>{{ '{:,}'.format(listing.total_views) }} total views</li>{% endif %}
-    {% if listing.stats_note %}<li>{{ listing.stats_note }}</li>{% endif %}
-  </ul>
+{% block main_attrs %} class="full-bleed"{% endblock %}
 
-  {% if listing.attachments %}
-  <div style="margin:18px 0">
-    <label style="margin-bottom:8px">Proof</label>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px">
-      {% for a in listing.attachments %}
-      <a href="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" target="_blank" rel="noopener">
-        <img src="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" alt="Proof of channel"
-             style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line-bright)">
-      </a>
-      {% endfor %}
+{% block header %}
+<header class="mp-top">
+  <div class="mp-top-inner">
+    <a href="{{ url_for('auth.home') }}" class="mp-brand">
+      <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" height="26">
+      <span>Money<span class="accent">Tuber</span></span>
+    </a>
+    <nav class="mp-nav">
+      <a href="{{ url_for('marketplace.browse', ref=ref_code) if ref_code else url_for('marketplace.browse') }}">← All listings</a>
+    </nav>
+    <a href="{{ url_for('marketplace.browse', ref=ref_code) if ref_code else url_for('marketplace.browse') }}" class="mp-ghost">Browse</a>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<style>
+  .mp-top{position:sticky;top:0;z-index:40;background:rgba(2,3,8,.9);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line)}
+  .mp-top-inner{max-width:1180px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;
+    justify-content:space-between;gap:18px}
+  .mp-brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;color:var(--text)}
+  .mp-brand:hover{text-decoration:none}
+  .mp-brand .accent{color:var(--brand)}
+  .mp-nav a{color:var(--muted);font-size:13.5px;font-weight:600}
+  .mp-nav a:hover{color:var(--text);text-decoration:none}
+  .mp-ghost{font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line-bright);
+    padding:8px 14px;border-radius:10px}
+  .mp-ghost:hover{color:var(--text);border-color:var(--brand);text-decoration:none}
+
+  .mp-detail{max-width:1180px;margin:0 auto;padding:36px 24px 80px;
+    display:grid;grid-template-columns:1.35fr .9fr;gap:28px;align-items:start}
+  @media (max-width:900px){ .mp-detail{grid-template-columns:1fr} }
+
+  .mp-panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    overflow:hidden;box-shadow:0 24px 60px -34px rgba(0,0,0,.9)}
+  .mp-hero-shot{position:relative;height:280px;background:linear-gradient(145deg,#1b1e26,#0a0c12)}
+  @media (max-width:640px){ .mp-hero-shot{height:200px} }
+  .mp-hero-shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .mp-hero-fallback{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;
+    padding:28px;background:
+      radial-gradient(circle at 75% 25%, rgba(229,17,28,.32), transparent 45%),
+      linear-gradient(160deg,#171a22,#0a0c12)}
+  .mp-hero-fallback span{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--brand-soft)}
+  .mp-hero-fallback strong{margin-top:8px;font-size:28px;font-weight:800;line-height:1.1;max-width:18ch}
+
+  .mp-main{padding:26px}
+  .mp-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .mp-tag{padding:5px 11px;border-radius:999px;font-size:11px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.08em;border:1px solid var(--line-bright);color:var(--muted)}
+  .mp-tag.on{background:rgba(86,211,100,.14);border-color:rgba(86,211,100,.4);color:var(--in)}
+  .mp-tag.niche{border-color:rgba(229,17,28,.4);color:var(--brand-soft)}
+  .mp-main h1{margin:0;font-size:34px;line-height:1.1;font-weight:800;letter-spacing:-.015em}
+  @media (max-width:640px){ .mp-main h1{font-size:28px} }
+  .mp-desc{margin:14px 0 0;color:var(--muted);font-size:15px;line-height:1.65}
+
+  .mp-metrics{margin-top:22px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media (max-width:640px){ .mp-metrics{grid-template-columns:1fr} }
+  .mp-metric{border:1px solid var(--line);background:rgba(2,3,8,.4);border-radius:12px;padding:14px}
+  .mp-metric .n{display:block;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+  .mp-metric .l{display:block;margin-top:4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+
+  .mp-note{margin-top:18px;padding:14px 16px;border-radius:12px;border:1px solid var(--line-bright);
+    background:rgba(229,17,28,.06);color:var(--muted);font-size:13.5px;line-height:1.55}
+
+  .mp-proof{margin-top:26px}
+  .mp-proof h2{margin:0 0 12px;font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+  .mp-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .mp-gallery a{display:block;border-radius:12px;overflow:hidden;border:1px solid var(--line-bright);
+    transition:border-color .2s,transform .2s}
+  .mp-gallery a:hover{border-color:var(--brand);transform:translateY(-2px)}
+  .mp-gallery img{width:100%;height:96px;object-fit:cover;display:block}
+
+  .mp-buy{position:sticky;top:78px;padding:26px}
+  .mp-buy .label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--muted)}
+  .mp-buy .price{margin:8px 0 0;font-size:36px;font-weight:800;letter-spacing:-.02em;line-height:1}
+  .mp-buy .price-sub{margin:8px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+  .mp-buy form{margin-top:22px}
+  .mp-buy label{margin-top:2px}
+  .mp-buy input{height:44px;margin-bottom:12px;background:rgba(2,3,8,.65)}
+  .mp-buy button{width:100%;margin-top:6px;padding:14px 18px;border-radius:12px;font-size:15px}
+  .mp-secure{margin-top:14px;font-size:12px;color:var(--faint);line-height:1.5;text-align:center}
+  .mp-sold{margin-top:18px}
+  .mp-sold .pill{margin-bottom:12px}
+  .mp-steps{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+  .mp-step{display:flex;gap:12px;align-items:flex-start}
+  .mp-step .n{width:24px;height:24px;border-radius:50%;background:rgba(229,17,28,.15);color:var(--brand-soft);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}
+  .mp-step p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.45}
+</style>
+
+<div class="mp-detail">
+  <div class="mp-panel">
+    <div class="mp-hero-shot">
+      {% if listing.attachments %}
+      <img src="{{ url_for('marketplace.uploaded_file', filename=listing.attachments[0].filename) }}"
+           alt="Proof for {{ listing.title }}">
+      {% else %}
+      <div class="mp-hero-fallback" aria-hidden="true">
+        <span>Channel for sale</span>
+        <strong>{{ listing.title }}</strong>
+      </div>
+      {% endif %}
+    </div>
+    <div class="mp-main">
+      <div class="mp-tags">
+        <span class="mp-tag {{ 'on' if listing.monetization_status == 'monetized' else '' }}">
+          {{ listing.monetization_status }}
+        </span>
+        {% if listing.niche %}<span class="mp-tag niche">{{ listing.niche }}</span>{% endif %}
+        {% if listing.availability != 'available' %}
+        <span class="mp-tag">{{ listing.availability }}</span>
+        {% endif %}
+      </div>
+      <h1>{{ listing.title }}</h1>
+      {% if listing.description %}
+      <p class="mp-desc">{{ listing.description }}</p>
+      {% endif %}
+
+      <div class="mp-metrics">
+        <div class="mp-metric">
+          <span class="n">{% if listing.subscriber_count %}{{ '{:,}'.format(listing.subscriber_count) }}{% else %}—{% endif %}</span>
+          <span class="l">subscribers</span>
+        </div>
+        <div class="mp-metric">
+          <span class="n">{% if listing.total_views %}{{ '{:,}'.format(listing.total_views) }}{% else %}—{% endif %}</span>
+          <span class="l">total views</span>
+        </div>
+        <div class="mp-metric">
+          <span class="n" style="font-size:18px">{{ 'Live' if listing.monetization_status == 'monetized' else 'Not yet' }}</span>
+          <span class="l">monetization</span>
+        </div>
+      </div>
+
+      {% if listing.stats_note %}
+      <div class="mp-note">{{ listing.stats_note }}</div>
+      {% endif %}
+
+      {% if listing.attachments %}
+      <div class="mp-proof">
+        <h2>Proof of channel</h2>
+        <div class="mp-gallery">
+          {% for a in listing.attachments %}
+          <a href="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" target="_blank" rel="noopener">
+            <img src="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" alt="Proof screenshot">
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
-  {% endif %}
 
-  <p style="font-size:28px;font-weight:800;margin:20px 0">
-    {{ listing.currency }} {{ '%.2f' | format(listing.price) }}
-  </p>
+  <aside class="mp-panel mp-buy">
+    <div class="label">Asking price</div>
+    <div class="price">{{ listing.currency }} {{ '%.2f' | format(listing.price) }}</div>
+    <p class="price-sub">Payment reserves the channel. Account handoff is coordinated manually with our team after checkout clears.</p>
 
-  {% if listing.availability == 'available' %}
-  <form method="post" action="{{ url_for('marketplace.buy', listing_id=listing.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="ref_code" value="{{ ref_code or '' }}">
-    <label for="name">Your name</label>
-    <input id="name" name="name" type="text" required autofocus>
-    <label for="email">Email</label>
-    <input id="email" name="email" type="email" required>
-    <label for="phone">Phone (optional)</label>
-    <input id="phone" name="phone" type="tel">
-    <div class="hint" style="margin-top:-8px">
-      Payment secures the channel; handoff of account access is coordinated manually with our
-      team after purchase.
+    {% if listing.availability == 'available' %}
+    <form method="post" action="{{ url_for('marketplace.buy', listing_id=listing.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="ref_code" value="{{ ref_code or '' }}">
+      <label for="name">Your name</label>
+      <input id="name" name="name" type="text" required autofocus placeholder="Full name">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required placeholder="you@email.com">
+      <label for="phone">Phone (optional)</label>
+      <input id="phone" name="phone" type="tel" placeholder="+234...">
+      <button type="submit">Buy &amp; pay with Paystack</button>
+    </form>
+    <p class="mp-secure">Secure checkout · one listing, one buyer · no double-sells</p>
+    {% else %}
+    <div class="mp-sold">
+      <span class="pill soon">No longer available</span>
+      <p class="hint" style="margin:0 0 16px">This channel was just reserved or sold. Browse what’s still open.</p>
+      <a href="{{ url_for('marketplace.browse', ref=ref_code) if ref_code else url_for('marketplace.browse') }}" class="btn secondary" style="width:100%;text-align:center">Browse other channels</a>
     </div>
-    <button type="submit" style="width:100%">Buy &amp; pay with Paystack</button>
-  </form>
-  {% else %}
-  <p class="pill soon" style="margin-bottom:16px">No longer available</p>
-  <p class="hint">This channel has just been reserved or sold. Check back for other listings.</p>
-  <a href="{{ url_for('marketplace.browse') }}" class="btn secondary">Browse other channels</a>
-  {% endif %}
+    {% endif %}
+
+    <div class="mp-steps">
+      <div class="mp-step"><span class="n">1</span><p>Pay to reserve — listing locks for you.</p></div>
+      <div class="mp-step"><span class="n">2</span><p>We verify payment and start transfer.</p></div>
+      <div class="mp-step"><span class="n">3</span><p>You receive ownership. Channel is yours.</p></div>
+    </div>
+  </aside>
 </div>
 {% endblock %}

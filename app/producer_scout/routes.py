@@ -9,7 +9,7 @@ from flask_login import login_required
 from . import bp
 from ..auth.decorators import roles_required
 
-MAX_SECTIONS = 13
+MAX_SECTIONS = 20
 
 
 def _fmt_ts(seconds):

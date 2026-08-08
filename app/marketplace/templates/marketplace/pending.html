@@ -1,10 +1,21 @@
 {% extends "marketing_base.html" %}
-{% block title %}Confirming payment — MoneyTuber{% endblock %}
+{% block title %}Payment pending — MoneyTuber{% endblock %}
+{% block main_attrs %} class="full-bleed"{% endblock %}
 {% block content %}
-<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
-  <h2 style="margin-top:0">Still confirming your payment&hellip;</h2>
-  <p class="hint">If you completed payment, this usually clears within a minute or two. If it
-    doesn't, reach out to us at {{ order.buyer_email }} and we'll sort it out.</p>
-  <a href="{{ url_for('auth.home') }}" class="btn secondary">Back to MoneyTuber</a>
+<style>
+  .mp-end{max-width:520px;margin:72px auto;padding:0 24px 80px;text-align:center}
+  .mp-end-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:36px 28px;box-shadow:0 24px 60px -34px rgba(0,0,0,.9)}
+  .mp-end-card h2{margin:0;font-size:28px;font-weight:800}
+  .mp-end-card p{margin:12px 0 0;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .mp-end-card .btn{margin-top:24px}
+</style>
+<div class="mp-end">
+  <div class="mp-end-card">
+    <h2>Still confirming payment</h2>
+    <p>We’re waiting on Paystack to confirm this checkout. If you were charged, hang tight —
+      the channel stays reserved while we verify.</p>
+    <a href="{{ url_for('auth.home') }}" class="btn secondary">Back to MoneyTuber</a>
+  </div>
 </div>
 {% endblock %}

@@ -1,24 +1,185 @@
 {% extends "marketing_base.html" %}
 {% block title %}Buy a Channel — MoneyTuber{% endblock %}
-{% block content %}
-<div style="max-width:760px;margin:40px auto">
-  <h2>Available channels</h2>
-  <p class="hint">Monetized and unmonetized YouTube channels, vetted and ready to hand off.</p>
+{% block main_attrs %} class="full-bleed"{% endblock %}
 
-  <div class="grid" style="margin-top:20px">
-    {% for listing in listings %}
-    <a href="{{ url_for('marketplace.detail', listing_id=listing.id, ref=ref_code) if ref_code else url_for('marketplace.detail', listing_id=listing.id) }}" class="card"
-       style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
-      <h3 style="margin:0">{{ listing.title }}</h3>
-      <span class="pill {{ 'ok' if listing.monetization_status == 'monetized' else 'off' }}">
-        {{ listing.monetization_status }}
-      </span>
-      {% if listing.subscriber_count %}<span class="hint" style="margin:0">{{ '{:,}'.format(listing.subscriber_count) }} subscribers</span>{% endif %}
-      <span style="font-size:20px;font-weight:800">{{ listing.currency }} {{ '%.2f' | format(listing.price) }}</span>
+{% block header %}
+<header class="mp-top">
+  <div class="mp-top-inner">
+    <a href="{{ url_for('auth.home') }}" class="mp-brand">
+      <img src="{{ url_for('static', filename='brand/mark.png') }}" alt="" height="26">
+      <span>Money<span class="accent">Tuber</span></span>
     </a>
-    {% else %}
-    <p class="hint">No listings available right now — check back soon.</p>
+    <nav class="mp-nav">
+      <a href="{{ url_for('auth.home') }}#offers">Grow &amp; Monetize</a>
+      <a href="{{ url_for('marketplace.browse', ref=ref_code) if ref_code else url_for('marketplace.browse') }}" class="is-active">Marketplace</a>
+      <a href="{{ url_for('affiliate.signup') }}">Affiliate</a>
+    </nav>
+    <a href="{{ url_for('auth.home') }}" class="mp-ghost">← Back home</a>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<style>
+  .mp-top{position:sticky;top:0;z-index:40;background:rgba(2,3,8,.9);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line)}
+  .mp-top-inner{max-width:1180px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;
+    justify-content:space-between;gap:18px}
+  .mp-brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;color:var(--text)}
+  .mp-brand:hover{text-decoration:none}
+  .mp-brand .accent{color:var(--brand)}
+  .mp-nav{display:flex;gap:22px}
+  @media (max-width:800px){ .mp-nav{display:none} }
+  .mp-nav a{color:var(--muted);font-size:13.5px;font-weight:600}
+  .mp-nav a:hover,.mp-nav a.is-active{color:var(--text);text-decoration:none}
+  .mp-ghost{font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line-bright);
+    padding:8px 14px;border-radius:10px}
+  .mp-ghost:hover{color:var(--text);border-color:var(--brand);text-decoration:none}
+
+  .mp-hero{position:relative;overflow:hidden;padding:64px 24px 40px;
+    background:
+      radial-gradient(ellipse 70% 60% at 80% 0%, rgba(229,17,28,.22), transparent 55%),
+      radial-gradient(ellipse 50% 50% at 10% 100%, rgba(229,17,28,.08), transparent 50%),
+      var(--ink)}
+  .mp-hero-inner{max-width:1180px;margin:0 auto}
+  .mp-eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.18em;color:var(--brand)}
+  .mp-hero h1{margin:12px 0 0;font-size:48px;line-height:1.02;font-weight:800;letter-spacing:-.02em;max-width:14ch}
+  @media (max-width:640px){ .mp-hero h1{font-size:34px} }
+  .mp-hero h1 .accent{color:var(--brand)}
+  .mp-lede{margin:14px 0 0;color:var(--muted);font-size:15.5px;line-height:1.6;max-width:540px}
+  .mp-trust{margin-top:28px;display:flex;flex-wrap:wrap;gap:10px}
+  .mp-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-bright);
+    background:rgba(18,20,27,.65);padding:8px 14px;border-radius:999px;font-size:12px;font-weight:600;color:var(--muted)}
+  .mp-chip i{width:6px;height:6px;border-radius:50%;background:var(--brand);display:inline-block}
+
+  .mp-section{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
+  .mp-section-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+  .mp-section-head h2{margin:0;font-size:22px;font-weight:800}
+  .mp-count{font-size:13px;color:var(--muted);font-weight:600}
+
+  .mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  @media (max-width:960px){ .mp-grid{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:640px){ .mp-grid{grid-template-columns:1fr} }
+
+  .mp-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);
+    border-radius:18px;overflow:hidden;color:inherit;text-decoration:none;
+    box-shadow:0 24px 60px -34px rgba(0,0,0,.9);
+    transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+  .mp-card:hover{transform:translateY(-5px);border-color:rgba(229,17,28,.55);
+    box-shadow:0 28px 70px -28px rgba(229,17,28,.35);text-decoration:none;color:inherit}
+
+  .mp-cover{position:relative;height:168px;background:
+    linear-gradient(145deg,#1b1e26,#0a0c12);
+    overflow:hidden}
+  .mp-cover img{width:100%;height:100%;object-fit:cover;display:block}
+  .mp-cover-fallback{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:flex-start;justify-content:flex-end;padding:18px;
+    background:
+      radial-gradient(circle at 80% 20%, rgba(229,17,28,.35), transparent 45%),
+      linear-gradient(160deg,#171a22,#0a0c12)}
+  .mp-cover-fallback span{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--brand-soft)}
+  .mp-cover-fallback strong{margin-top:6px;font-size:20px;font-weight:800;line-height:1.15;max-width:16ch}
+  .mp-badges{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;z-index:2}
+  .mp-badge{padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.08em;border:1px solid transparent;backdrop-filter:blur(6px)}
+  .mp-badge.on{background:rgba(86,211,100,.16);border-color:rgba(86,211,100,.4);color:var(--in)}
+  .mp-badge.off{background:rgba(2,3,8,.75);border-color:var(--line-bright);color:var(--muted)}
+  .mp-badge.niche{background:rgba(2,3,8,.75);border-color:rgba(229,17,28,.4);color:var(--brand-soft)}
+
+  .mp-body{padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px;flex:1}
+  .mp-body h3{margin:0;font-size:19px;font-weight:750;line-height:1.25}
+  .mp-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mp-stat{border:1px solid var(--line);background:rgba(2,3,8,.35);border-radius:10px;padding:10px 12px}
+  .mp-stat .n{display:block;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+  .mp-stat .l{display:block;margin-top:2px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .mp-foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .mp-price{font-size:22px;font-weight:800;letter-spacing:-.01em}
+  .mp-price small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .mp-cta{font-size:12.5px;font-weight:700;color:#fff;background:var(--brand);
+    padding:10px 14px;border-radius:10px;white-space:nowrap}
+  .mp-card:hover .mp-cta{background:var(--brand-soft)}
+
+  .mp-empty{border:1px dashed var(--line-bright);border-radius:18px;padding:48px 28px;text-align:center;
+    background:rgba(18,20,27,.4)}
+  .mp-empty h3{margin:0;font-size:24px}
+  .mp-empty p{margin:10px auto 0;max-width:420px;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .mp-empty .btn{margin-top:22px}
+</style>
+
+<section class="mp-hero">
+  <div class="mp-hero-inner">
+    <p class="mp-eyebrow">Channel marketplace</p>
+    <h1>Own the asset. Skip the <span class="accent">zero-to-one</span>.</h1>
+    <p class="mp-lede">Vetted YouTube channels — monetized and unmonetized — ready for transfer.
+      Revenue, RPM and watch-time checked before anything hits this storefront.</p>
+    <div class="mp-trust">
+      <span class="mp-chip"><i></i> Proof screenshots on every listing</span>
+      <span class="mp-chip"><i></i> Secure Paystack checkout</span>
+      <span class="mp-chip"><i></i> Manual handoff after payment</span>
+    </div>
+  </div>
+</section>
+
+<section class="mp-section">
+  <div class="mp-section-head">
+    <h2>Available now</h2>
+    <span class="mp-count">{{ listings|length }} listing{{ '' if listings|length == 1 else 's' }}</span>
+  </div>
+
+  {% if listings %}
+  <div class="mp-grid">
+    {% for listing in listings %}
+    {% set detail_url = url_for('marketplace.detail', listing_id=listing.id, ref=ref_code) if ref_code else url_for('marketplace.detail', listing_id=listing.id) %}
+    <a href="{{ detail_url }}" class="mp-card">
+      <div class="mp-cover">
+        <div class="mp-badges">
+          <span class="mp-badge {{ 'on' if listing.monetization_status == 'monetized' else 'off' }}">
+            {{ listing.monetization_status }}
+          </span>
+          {% if listing.niche %}<span class="mp-badge niche">{{ listing.niche }}</span>{% endif %}
+        </div>
+        {% if listing.attachments %}
+        <img src="{{ url_for('marketplace.uploaded_file', filename=listing.attachments[0].filename) }}"
+             alt="Proof for {{ listing.title }}">
+        {% else %}
+        <div class="mp-cover-fallback" aria-hidden="true">
+          <span>Channel asset</span>
+          <strong>{{ listing.title }}</strong>
+        </div>
+        {% endif %}
+      </div>
+      <div class="mp-body">
+        <h3>{{ listing.title }}</h3>
+        <div class="mp-stats">
+          <div class="mp-stat">
+            <span class="n">{% if listing.subscriber_count %}{{ '{:,}'.format(listing.subscriber_count) }}{% else %}—{% endif %}</span>
+            <span class="l">subscribers</span>
+          </div>
+          <div class="mp-stat">
+            <span class="n">{% if listing.total_views %}{{ '{:,}'.format(listing.total_views) }}{% else %}—{% endif %}</span>
+            <span class="l">total views</span>
+          </div>
+        </div>
+        <div class="mp-foot">
+          <div class="mp-price">
+            <small>Asking price</small>
+            {{ listing.currency }} {{ '%.2f' | format(listing.price) }}
+          </div>
+          <span class="mp-cta">View →</span>
+        </div>
+      </div>
+    </a>
     {% endfor %}
   </div>
-</div>
+  {% else %}
+  <div class="mp-empty">
+    <h3>Storefront is between batches</h3>
+    <p>New vetted channels drop in limited releases. Join the waitlist on the homepage and
+      we’ll ping you before the next wave opens.</p>
+    <a href="{{ url_for('auth.home') }}#offers" class="btn">Join the waitlist</a>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

@@ -679,7 +679,7 @@ def generate():
     script     = data.get("script", "").strip()
     voice      = data.get("voice", "en-US-GuyNeural")
     title      = data.get("title", "").strip()
-    n_sections = max(2, min(10, int(data.get("sections", 6))))
+    n_sections = max(2, min(20, int(data.get("sections", 6))))
 
     if not script:
         return jsonify({"error": "No script provided"}), 400
@@ -1225,6 +1225,13 @@ video{width:100%;border-radius:8px;background:#000;display:block}
           <option value="6" selected>6 sections</option>
           <option value="7">7 sections</option>
           <option value="8">8 sections</option>
+          <option value="9">9 sections</option>
+          <option value="10">10 sections</option>
+          <option value="12">12 sections</option>
+          <option value="14">14 sections</option>
+          <option value="16">16 sections</option>
+          <option value="18">18 sections</option>
+          <option value="20">20 sections</option>
         </select>
       </div>
     </div>

@@ -1,10 +1,25 @@
 {% extends "marketing_base.html" %}
 {% block title %}Purchase confirmed — MoneyTuber{% endblock %}
+{% block main_attrs %} class="full-bleed"{% endblock %}
 {% block content %}
-<div class="card" style="max-width:480px;margin:60px auto;text-align:center">
-  <h2 style="margin-top:0">Payment confirmed!</h2>
-  <p class="hint">Thanks, {{ order.buyer_name }} — the channel is yours. Our team will reach out
-    at {{ order.buyer_email }} shortly to coordinate the account handoff.</p>
-  <a href="{{ url_for('auth.home') }}" class="btn">Back to MoneyTuber</a>
+<style>
+  .mp-end{max-width:520px;margin:72px auto;padding:0 24px 80px;text-align:center}
+  .mp-end-card{background:var(--panel);border:1px solid rgba(86,211,100,.35);border-radius:18px;
+    padding:36px 28px;box-shadow:0 24px 60px -34px rgba(0,0,0,.9)}
+  .mp-end-card .mark{width:48px;height:48px;margin:0 auto;border-radius:50%;
+    background:rgba(86,211,100,.15);color:var(--in);display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:800}
+  .mp-end-card h2{margin:16px 0 0;font-size:28px;font-weight:800}
+  .mp-end-card p{margin:12px 0 0;color:var(--muted);font-size:14.5px;line-height:1.6}
+  .mp-end-card .btn{margin-top:24px}
+</style>
+<div class="mp-end">
+  <div class="mp-end-card">
+    <div class="mark" aria-hidden="true">✓</div>
+    <h2>Payment confirmed</h2>
+    <p>Thanks, {{ order.buyer_name }} — the channel is reserved for you. Our team will reach out
+      at <strong style="color:var(--text)">{{ order.buyer_email }}</strong> shortly to coordinate the account handoff.</p>
+    <a href="{{ url_for('auth.home') }}" class="btn">Back to MoneyTuber</a>
+  </div>
 </div>
 {% endblock %}
