@@ -54,6 +54,9 @@ class ChannelListing(db.Model):
     )
 
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+    attachments = db.relationship(
+        "ListingAttachment", order_by="ListingAttachment.created_at", viewonly=True
+    )
 
     __table_args__ = (
         db.CheckConstraint(
@@ -66,6 +69,30 @@ class ChannelListing(db.Model):
         db.CheckConstraint(
             "availability in ('available','reserved','sold')", name="ck_listing_availability"
         ),
+    )
+
+
+class ListingAttachment(db.Model):
+    """A proof-of-ownership image (analytics screenshot, verification
+    image) attached to a listing. filename is the safe, server-generated
+    on-disk name (never the buyer/admin's original) — see
+    app/admin/routes.py's upload handling for why. Files live under
+    Config.LISTING_UPLOAD_DIR, served publicly (no auth — buyers need to
+    see these) via GET /marketplace/uploads/<filename>.
+    """
+
+    __tablename__ = "listing_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    listing_id = db.Column(
+        db.Integer, db.ForeignKey("channel_listings.id"), nullable=False, index=True
+    )
+    filename = db.Column(db.String(150), nullable=False, unique=True)
+    original_filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(50))
+    size_bytes = db.Column(db.Integer)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
 
 

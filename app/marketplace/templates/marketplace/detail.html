@@ -14,6 +14,20 @@
     {% if listing.stats_note %}<li>{{ listing.stats_note }}</li>{% endif %}
   </ul>
 
+  {% if listing.attachments %}
+  <div style="margin:18px 0">
+    <label style="margin-bottom:8px">Proof</label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px">
+      {% for a in listing.attachments %}
+      <a href="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" target="_blank" rel="noopener">
+        <img src="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" alt="Proof of channel"
+             style="width:100%;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line-bright)">
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <p style="font-size:28px;font-weight:800;margin:20px 0">
     {{ listing.currency }} {{ '%.2f' | format(listing.price) }}
   </p>

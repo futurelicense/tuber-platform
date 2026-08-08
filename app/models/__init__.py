@@ -4,7 +4,7 @@ from .channel import ConnectedChannel
 from .rewards import MetricDefinition, MetricEvent, RewardRule
 from .agent import WatchedChannel, DiscoveredVideo, SuggestedClip
 from .master_class import MasterClassEnrollment, MasterClassSettings
-from .marketplace import ChannelListing, ChannelOrder
+from .marketplace import ChannelListing, ChannelOrder, ListingAttachment
 from .affiliate import Prospect, Commission, AffiliateProgramSettings, effective_commission_rate
 
 __all__ = [
@@ -26,4 +26,5 @@ __all__ = [
     "MasterClassSettings",
     "ChannelListing",
     "ChannelOrder",
+    "ListingAttachment",
 ]

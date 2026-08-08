@@ -1,7 +1,8 @@
 import logging
 import secrets
 
-from flask import render_template, request, redirect, url_for, flash, session
+from flask import current_app, render_template, request, redirect, url_for, flash, session, \
+    send_from_directory
 
 from . import bp
 from .services import mark_order_paid, reserve_listing, release_listing, release_stale_reservations
@@ -32,6 +33,15 @@ def _find_prospect(email):
     ) or (
         Prospect.query.filter_by(email=email).order_by(Prospect.created_at.desc()).first()
     )
+
+
+@bp.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    # send_from_directory rejects any filename that would escape
+    # LISTING_UPLOAD_DIR (".." components, absolute paths) on its own —
+    # the safety here doesn't depend on filename having come from our own
+    # secrets.token_hex-generated names, though in practice it always does.
+    return send_from_directory(current_app.config["LISTING_UPLOAD_DIR"], filename)
 
 
 @bp.route("/")

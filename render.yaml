@@ -26,6 +26,8 @@ services:
         value: /app/data/clips
       - key: YTPROD_OUTPUT_DIR
         value: /app/data/output
+      - key: LISTING_UPLOAD_DIR
+        value: /app/data/listing_uploads
       - key: AI_KEY
         sync: false
       - key: AI_MODEL

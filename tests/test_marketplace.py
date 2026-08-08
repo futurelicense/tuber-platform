@@ -6,13 +6,18 @@ payment_conflict fallback for the rare case both stages still race.
 """
 import hashlib
 import hmac
+import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -23,10 +28,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8000")
 
 from app import create_app
+from app.admin.routes import MAX_ATTACHMENTS_PER_LISTING
 from app.config import Config
 from app.extensions import db
 from app.marketplace import services
-from app.models import ChannelListing, ChannelOrder, Commission, Prospect, User
+from app.models import ChannelListing, ChannelOrder, Commission, ListingAttachment, Prospect, User
 from app.paystack import PaystackError
 
 PAYSTACK_SECRET = os.environ["PAYSTACK_SECRET_KEY"]
@@ -402,6 +408,115 @@ class WebhookCsrfExemptionTests(_DbTestCase):
         self.assertEqual(resp.status_code, 200)
         db.session.refresh(order)
         self.assertEqual(order.status, "paid")
+
+
+def _tiny_png_bytes():
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), color=(255, 0, 0)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class ListingAttachmentTests(_DbTestCase):
+    def setUp(self):
+        super().setUp()
+        self.upload_dir = tempfile.mkdtemp()
+        self.app.config["LISTING_UPLOAD_DIR"] = self.upload_dir
+
+    def tearDown(self):
+        shutil.rmtree(self.upload_dir, ignore_errors=True)
+        super().tearDown()
+
+    def _login_admin(self):
+        self.client.post("/login", data={"email": "admin@example.com", "password": "x"})
+
+    def _new_listing_with_file(self, file_bytes, filename):
+        self._login_admin()
+        return self.client.post(
+            "/admin/marketplace/listings/new",
+            data={
+                "title": "Cooking Channel", "monetization_status": "monetized",
+                "price": "200000", "currency": "NGN",
+                "attachments": (io.BytesIO(file_bytes), filename),
+            },
+            content_type="multipart/form-data",
+        )
+
+    def test_valid_image_upload_creates_attachment_and_file(self):
+        resp = self._new_listing_with_file(_tiny_png_bytes(), "proof.png")
+        self.assertEqual(resp.status_code, 302)
+
+        attachment = ListingAttachment.query.first()
+        self.assertIsNotNone(attachment)
+        self.assertEqual(attachment.original_filename, "proof.png")
+        self.assertTrue(os.path.isfile(os.path.join(self.upload_dir, attachment.filename)))
+        # on-disk name is never the caller's filename
+        self.assertNotEqual(attachment.filename, "proof.png")
+
+    def test_disguised_non_image_rejected(self):
+        resp = self._new_listing_with_file(b"not actually a png, just text bytes", "fake.png")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ListingAttachment.query.count(), 0)
+        self.assertEqual(len(os.listdir(self.upload_dir)) if os.path.isdir(self.upload_dir) else 0, 0)
+
+    def test_disallowed_extension_rejected(self):
+        resp = self._new_listing_with_file(b"whatever", "proof.svg")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ListingAttachment.query.count(), 0)
+
+    def test_attachment_count_cap_enforced(self):
+        listing = self._make_listing()
+        for _ in range(MAX_ATTACHMENTS_PER_LISTING):
+            db.session.add(ListingAttachment(
+                listing_id=listing.id, filename=f"existing-{_}.png", size_bytes=10,
+            ))
+        db.session.commit()
+
+        self._login_admin()
+        resp = self.client.post(
+            f"/admin/marketplace/listings/{listing.id}/edit",
+            data={
+                "title": listing.title, "monetization_status": "monetized",
+                "price": "200000", "currency": "NGN",
+                "attachments": (io.BytesIO(_tiny_png_bytes()), "one_more.png"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            ListingAttachment.query.filter_by(listing_id=listing.id).count(),
+            MAX_ATTACHMENTS_PER_LISTING,
+        )
+
+    def test_serving_route_404_for_unknown_file(self):
+        resp = self.client.get("/marketplace/uploads/does-not-exist.png")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_serving_route_rejects_path_traversal(self):
+        resp = self.client.get("/marketplace/uploads/../../../../etc/passwd")
+        self.assertIn(resp.status_code, (404, 400))
+
+    def test_admin_delete_removes_row_and_file(self):
+        self._new_listing_with_file(_tiny_png_bytes(), "proof.png")
+        attachment = ListingAttachment.query.first()
+        on_disk_path = os.path.join(self.upload_dir, attachment.filename)
+        self.assertTrue(os.path.isfile(on_disk_path))
+
+        self.client.post(
+            f"/admin/marketplace/listings/{attachment.listing_id}"
+            f"/attachments/{attachment.id}/delete"
+        )
+        self.assertEqual(ListingAttachment.query.count(), 0)
+        self.assertFalse(os.path.isfile(on_disk_path))
+
+    def test_uploaded_image_displays_on_public_listing_page(self):
+        self._new_listing_with_file(_tiny_png_bytes(), "proof.png")
+        listing = ChannelListing.query.first()
+        listing.status = "published"
+        db.session.commit()
+
+        resp = self.client.get(f"/marketplace/{listing.id}")
+        attachment = ListingAttachment.query.first()
+        self.assertIn(attachment.filename.encode(), resp.data)
 
 
 if __name__ == "__main__":

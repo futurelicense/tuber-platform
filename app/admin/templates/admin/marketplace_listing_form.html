@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card" style="max-width:520px">
   <h2>{{ 'Edit' if listing else 'New' }} channel listing</h2>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="title">Title</label>
     <input id="title" name="title" type="text" value="{{ listing.title if listing else '' }}" required autofocus>
@@ -29,8 +29,35 @@
            value="{{ listing.price if listing else '' }}" required>
     <label for="currency">Currency</label>
     <input id="currency" name="currency" maxlength="3" value="{{ listing.currency if listing else 'NGN' }}" required>
+
+    <label for="attachments">Proof of channel (screenshots)</label>
+    <input id="attachments" name="attachments" type="file" multiple accept="image/png,image/jpeg,image/webp">
+    <div class="hint" style="margin-top:-8px">
+      PNG, JPG, or WEBP — up to {{ max_attachments }} images per listing. Shown to buyers on the listing page.
+    </div>
+
     <div class="hint">New listings save as a draft — publish it separately once ready.</div>
     <button type="submit">{{ 'Save changes' if listing else 'Create listing' }}</button>
   </form>
 </div>
+
+{% if listing and listing.attachments %}
+<div class="card" style="max-width:520px">
+  <h2>Uploaded proof ({{ listing.attachments|length }})</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
+    {% for a in listing.attachments %}
+    <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">
+      <a href="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" target="_blank">
+        <img src="{{ url_for('marketplace.uploaded_file', filename=a.filename) }}" alt="{{ a.original_filename or 'attachment' }}"
+             style="width:100%;height:90px;object-fit:cover;display:block">
+      </a>
+      <form method="post" action="{{ url_for('admin.delete_attachment', listing_id=listing.id, attachment_id=a.id) }}" style="padding:6px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="danger" style="width:100%;font-size:11px;padding:6px">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}

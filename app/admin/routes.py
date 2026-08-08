@@ -26,10 +26,14 @@ from ..models import (
     MasterClassSettings,
     ChannelListing,
     ChannelOrder,
+    ListingAttachment,
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
 from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
+from ..uploads import save_image, delete_image, UploadRejected
 from ..marketplace.services import release_listing
+
+MAX_ATTACHMENTS_PER_LISTING = 6
 
 
 @bp.before_request
@@ -527,6 +531,57 @@ def _listing_form_fields():
     }
 
 
+def _save_uploaded_attachments(listing):
+    """Shared by new_listing/edit_listing. Silently no-ops if no files were
+    posted (the field is optional). Invalid files are skipped with a flash
+    explaining why, rather than failing the whole form submit.
+    """
+    files = [f for f in request.files.getlist("attachments") if f and f.filename]
+    if not files:
+        return
+
+    existing_count = ListingAttachment.query.filter_by(listing_id=listing.id).count()
+    room = MAX_ATTACHMENTS_PER_LISTING - existing_count
+    if room <= 0:
+        flash(
+            f"'{listing.title}' already has the maximum of {MAX_ATTACHMENTS_PER_LISTING} "
+            "attachments — remove one before adding more.",
+            "error",
+        )
+        return
+
+    saved = 0
+    for f in files[:room]:
+        try:
+            filename, original_filename, content_type, size_bytes = save_image(
+                f, prefix=f"listing{listing.id}"
+            )
+        except UploadRejected as e:
+            flash(str(e), "error")
+            continue
+        db.session.add(
+            ListingAttachment(
+                listing_id=listing.id,
+                filename=filename,
+                original_filename=original_filename,
+                content_type=content_type,
+                size_bytes=size_bytes,
+            )
+        )
+        saved += 1
+
+    if len(files) > room:
+        flash(
+            f"Only {room} more attachment(s) could be added "
+            f"(max {MAX_ATTACHMENTS_PER_LISTING} per listing).",
+            "error",
+        )
+
+    if saved:
+        db.session.commit()
+        flash(f"{saved} attachment(s) uploaded.", "success")
+
+
 @bp.route("/marketplace/listings/new", methods=["GET", "POST"])
 def new_listing():
     if request.method == "POST":
@@ -539,7 +594,7 @@ def new_listing():
             or len(fields["currency"]) != 3
         ):
             flash("Title, a valid price, currency, and monetization status are required.", "error")
-            return render_template("admin/marketplace_listing_form.html", listing=None)
+            return render_template("admin/marketplace_listing_form.html", listing=None, max_attachments=MAX_ATTACHMENTS_PER_LISTING)
 
         listing = ChannelListing(
             title=fields["title"],
@@ -555,10 +610,11 @@ def new_listing():
         )
         db.session.add(listing)
         db.session.commit()
+        _save_uploaded_attachments(listing)
         flash(f"Listing '{listing.title}' created as a draft.", "success")
-        return redirect(url_for("admin.marketplace_listings"))
+        return redirect(url_for("admin.edit_listing", listing_id=listing.id))
 
-    return render_template("admin/marketplace_listing_form.html", listing=None)
+    return render_template("admin/marketplace_listing_form.html", listing=None, max_attachments=MAX_ATTACHMENTS_PER_LISTING)
 
 
 @bp.route("/marketplace/listings/<int:listing_id>/edit", methods=["GET", "POST"])
@@ -575,7 +631,7 @@ def edit_listing(listing_id):
             or len(fields["currency"]) != 3
         ):
             flash("Title, a valid price, currency, and monetization status are required.", "error")
-            return render_template("admin/marketplace_listing_form.html", listing=listing)
+            return render_template("admin/marketplace_listing_form.html", listing=listing, max_attachments=MAX_ATTACHMENTS_PER_LISTING)
 
         listing.title = fields["title"]
         listing.description = fields["description"] or None
@@ -587,10 +643,23 @@ def edit_listing(listing_id):
         listing.price = fields["price"]
         listing.currency = fields["currency"]
         db.session.commit()
+        _save_uploaded_attachments(listing)
         flash(f"Listing '{listing.title}' updated.", "success")
-        return redirect(url_for("admin.marketplace_listings"))
+        return redirect(url_for("admin.edit_listing", listing_id=listing.id))
 
-    return render_template("admin/marketplace_listing_form.html", listing=listing)
+    return render_template("admin/marketplace_listing_form.html", listing=listing, max_attachments=MAX_ATTACHMENTS_PER_LISTING)
+
+
+@bp.route("/marketplace/listings/<int:listing_id>/attachments/<int:attachment_id>/delete", methods=["POST"])
+def delete_attachment(listing_id, attachment_id):
+    attachment = ListingAttachment.query.filter_by(
+        id=attachment_id, listing_id=listing_id
+    ).first_or_404()
+    delete_image(attachment.filename)
+    db.session.delete(attachment)
+    db.session.commit()
+    flash("Attachment removed.", "success")
+    return redirect(url_for("admin.edit_listing", listing_id=listing_id))
 
 
 @bp.route("/marketplace/listings/<int:listing_id>/publish", methods=["POST"])

@@ -94,6 +94,18 @@ class Config:
     PAYSTACK_SECRET_KEY = _paystack_secret_key()
     PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 
+    # Same env-configurable-with-local-fallback shape as the vendored
+    # Clipper's CLIPPER_DOWNLOAD_DIR (vendor/youtube-clipper/app.py) — falls
+    # back to a relative dir for local dev, points at the Render disk
+    # already mounted at /app/data in production (see render.yaml).
+    LISTING_UPLOAD_DIR = os.environ.get("LISTING_UPLOAD_DIR") or os.path.join(
+        os.getcwd(), "listing_uploads"
+    )
+    # Caps total request body size — a payment-adjacent upload form is a
+    # plausible DoS target otherwise. 15MB comfortably fits the 6-image
+    # per-listing cap enforced in app/admin/routes.py.
+    MAX_CONTENT_LENGTH = 15 * 1024 * 1024
+
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     # Only force Secure cookies when actually served over https (ProxyFix sets
