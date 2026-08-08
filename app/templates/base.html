@@ -124,9 +124,12 @@
       <div class="nav-group">
         <div class="nav-label">Revenue</div>
         <a href="{{ url_for('admin.master_class') }}" class="{{ 'active' if request.endpoint and 'master_class' in request.endpoint or request.endpoint == 'admin.refund_enrollment' }}">Master Class</a>
-        <a href="{{ url_for('admin.marketplace_listings') }}" class="{{ 'active' if request.endpoint and 'listing' in request.endpoint }}">Marketplace</a>
-        <a href="{{ url_for('admin.marketplace_orders') }}" class="{{ 'active' if request.endpoint and (request.endpoint == 'admin.marketplace_orders' or request.endpoint == 'admin.update_order_status' or request.endpoint == 'admin.refund_order') }}">Orders</a>
         <a href="{{ url_for('admin.rewards') }}" class="{{ 'active' if request.endpoint=='admin.rewards' }}">Rewards</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Marketplace</div>
+        <a href="{{ url_for('admin.marketplace_listings') }}" class="{{ 'active' if request.endpoint and 'listing' in request.endpoint }}">Listings</a>
+        <a href="{{ url_for('admin.marketplace_orders') }}" class="{{ 'active' if request.endpoint and (request.endpoint == 'admin.marketplace_orders' or request.endpoint == 'admin.update_order_status' or request.endpoint == 'admin.refund_order') }}">Orders</a>
       </div>
       <div class="nav-group">
         <div class="nav-label">Tools</div>
