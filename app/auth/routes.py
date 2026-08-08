@@ -7,7 +7,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 
 from . import bp
 from ..extensions import db
-from ..models import User, LoginEvent, MasterClassSettings, ChannelListing
+from ..models import User, LoginEvent
 from ..geo import lookup_ip
 
 # In-process failed-login throttle, keyed per client IP and per attempted
@@ -122,15 +122,13 @@ def home():
     """Public marketing homepage for anonymous visitors; sends everyone
     already signed in straight to their tool."""
     if not current_user.is_authenticated:
-        marketplace_open = (
-            ChannelListing.query.filter_by(status="published", availability="available").count()
-            > 0
-        )
-        return render_template(
-            "home.html",
-            master_class_open=MasterClassSettings.get().is_open_for_enrollment,
-            marketplace_open=marketplace_open,
-        )
+        # TEMPORARY (2026-08-08): production's marketplace/master_class
+        # tables were behind on migrations, 500ing this route for every
+        # anonymous visitor. Redirecting straight to login until that's
+        # confirmed fixed for good — revert to rendering home.html (see
+        # git history) once it is. Other marketplace-dependent pages are
+        # unaffected by this and need the actual migration fix regardless.
+        return redirect(url_for("auth.login"))
     if current_user.role == "admin":
         return redirect(url_for("admin.dashboard"))
     if current_user.role == "clipper":

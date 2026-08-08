@@ -320,10 +320,13 @@ class RoleGateExclusionTests(_DbTestCase):
 
 
 class HomepageRoutingTests(_DbTestCase):
-    def test_anonymous_get_home_renders_marketing_page(self):
+    def test_anonymous_get_home_redirects_to_login(self):
+        # TEMPORARY, matching the same stopgap in app/auth/routes.py:home() —
+        # update this back to a 200/marketing-page assertion once that
+        # revert happens.
         resp = self.client.get("/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"MoneyTuber", resp.data)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
 
     def test_authenticated_redirects_per_role(self):
         cases = {
