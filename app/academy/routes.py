@@ -1,8 +1,12 @@
-from flask import render_template, request, redirect, url_for, flash, abort
+import logging
+import secrets
+
+from flask import render_template, request, redirect, url_for, flash, abort, session
 from flask_login import login_required, login_user, current_user
 
 from . import bp
 from . import services
+from .. import paystack
 from ..extensions import db
 from ..models import (
     User,
@@ -12,6 +16,8 @@ from ..models import (
     AcademySubscription,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _gate_open():
     if not services.academy_is_open() and not (
@@ -20,10 +26,25 @@ def _gate_open():
         abort(404)
 
 
+def _resolve_ref_code():
+    from_query = (request.args.get("ref") or "").strip()
+    if from_query:
+        session["ref_code"] = from_query.upper()
+        return from_query.upper()
+    return (session.get("ref_code") or "").strip() or None
+
+
+def _expected_kobo(sub):
+    return int(round(float(sub.amount) * 100))
+
+
 @bp.route("/")
 def home():
     _gate_open()
+    _resolve_ref_code()
     if current_user.is_authenticated and current_user.role == "learner":
+        sub = services.get_subscription(current_user)
+        can_learn = services.user_has_course_access()
         featured = (
             AcademyCourse.query.filter_by(status="published", is_featured=True)
             .order_by(AcademyCourse.sort_order.asc())
@@ -35,7 +56,7 @@ def home():
         continue_course = featured[0] if featured else (tools[0] if tools else None)
         progress = (
             services.course_progress_percent(current_user, continue_course)
-            if continue_course
+            if continue_course and can_learn
             else 0
         )
         return render_template(
@@ -45,9 +66,10 @@ def home():
             use_cases=use_cases,
             continue_course=continue_course,
             continue_progress=progress,
-            completed_count=services.count_completed_lessons(current_user.id),
+            completed_count=services.count_completed_lessons(current_user.id) if can_learn else 0,
+            subscription=sub,
+            can_learn=can_learn,
         )
-    # Marketing landing for guests / other roles
     tools = services.published_courses(catalog="tool")[:8]
     use_cases = services.published_courses(catalog="use_case")[:8]
     settings = AcademySettings.get()
@@ -56,34 +78,196 @@ def home():
         tools=tools,
         use_cases=use_cases,
         settings=settings,
+        ref_code=_resolve_ref_code(),
     )
 
 
 @bp.route("/signup", methods=["GET", "POST"])
 def signup():
     _gate_open()
+    settings = AcademySettings.get()
+    ref_code = _resolve_ref_code()
     if current_user.is_authenticated:
         return redirect(url_for("academy.home"))
+
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
         display_name = (request.form.get("display_name") or "").strip()
+        whatsapp = (request.form.get("whatsapp") or "").strip()
+        entry_path = request.form.get("entry_path") or "direct_pay"
+        ref_code = (request.form.get("ref_code") or ref_code or "").strip()
+        try:
+            ai_knowledge = int(request.form.get("ai_knowledge") or "0")
+        except ValueError:
+            ai_knowledge = 0
+
+        form_ctx = dict(settings=settings, ref_code=ref_code)
+
         if not email or len(password) < 8:
             flash("Email and a password of at least 8 characters are required.", "error")
-            return render_template("academy/signup.html")
+            return render_template("academy/signup.html", **form_ctx)
+        if not whatsapp:
+            flash("WhatsApp number is required.", "error")
+            return render_template("academy/signup.html", **form_ctx)
+        if ai_knowledge < 1 or ai_knowledge > 5:
+            flash("Rate your current AI knowledge from 1 to 5.", "error")
+            return render_template("academy/signup.html", **form_ctx)
+        if entry_path not in ("direct_pay", "relate_admin"):
+            flash("Choose how you want to enter Academy.", "error")
+            return render_template("academy/signup.html", **form_ctx)
         if User.query.filter_by(email=email).first():
             flash("That email is already registered — log in instead.", "error")
-            return render_template("academy/signup.html")
+            return render_template("academy/signup.html", **form_ctx)
+
+        affiliate = services.find_affiliate(ref_code)
         user = User(email=email, role="learner", display_name=display_name or None)
         user.set_password(password)
         db.session.add(user)
         db.session.flush()
-        services.ensure_learner_subscription(user)
+
+        if entry_path == "relate_admin":
+            sub = AcademySubscription(
+                user_id=user.id,
+                status="relate_only",
+                entry_path="relate_admin",
+                whatsapp=whatsapp,
+                ai_knowledge=ai_knowledge,
+                affiliate_id=affiliate.id if affiliate else None,
+                referral_code_used=ref_code.upper() if affiliate else None,
+            )
+            db.session.add(sub)
+            db.session.commit()
+            login_user(user)
+            services.post_message(
+                user.id,
+                user,
+                "Hi — I chose “Relate with Admin”. Looking forward to connecting.",
+            )
+            flash("Account created. Message an admin below — courses unlock after they approve or you pay.", "success")
+            return redirect(url_for("academy.messages"))
+
+        # Direct pay path
+        sub = AcademySubscription(
+            user_id=user.id,
+            status="pending",
+            entry_path="direct_pay",
+            whatsapp=whatsapp,
+            ai_knowledge=ai_knowledge,
+            affiliate_id=affiliate.id if affiliate else None,
+            referral_code_used=ref_code.upper() if affiliate else None,
+            amount=settings.price_amount,
+            currency=settings.currency,
+            paystack_reference="pending",
+        )
+        db.session.add(sub)
+        db.session.flush()
+        sub.paystack_reference = f"ac-{sub.id}-{secrets.token_hex(6)}"
         db.session.commit()
         login_user(user)
-        flash("Welcome to MoneyTuber Academy.", "success")
+
+        try:
+            data = paystack.initialize_transaction(
+                email=email,
+                amount_kobo=_expected_kobo(sub),
+                reference=sub.paystack_reference,
+                callback_url=url_for("academy.callback", _external=True),
+                metadata={
+                    "academy_subscription_id": sub.id,
+                    "affiliate_id": sub.affiliate_id,
+                    "user_id": user.id,
+                },
+            )
+        except paystack.PaystackError as e:
+            sub.status = "failed"
+            db.session.commit()
+            logger.warning("Paystack initialize failed for academy sub %s: %s", sub.id, e)
+            flash("Account created, but checkout failed — try Pay again from Profile.", "error")
+            return redirect(url_for("academy.profile"))
+
+        return redirect(data["authorization_url"])
+
+    return render_template("academy/signup.html", settings=settings, ref_code=ref_code)
+
+
+@bp.route("/callback")
+@login_required
+def callback():
+    reference = request.args.get("reference") or request.args.get("trxref")
+    if not reference:
+        flash("Missing payment reference.", "error")
+        return redirect(url_for("academy.profile"))
+
+    sub = AcademySubscription.query.filter_by(paystack_reference=reference).first_or_404()
+    if sub.user_id != current_user.id and current_user.role != "admin":
+        abort(403)
+
+    if sub.status == "active":
+        flash("Payment confirmed — welcome to Academy.", "success")
         return redirect(url_for("academy.home"))
-    return render_template("academy/signup.html")
+
+    try:
+        data = paystack.verify_transaction(reference)
+    except paystack.PaystackError as e:
+        logger.warning("Paystack verify failed for academy %s: %s", reference, e)
+        flash("Still confirming payment — you'll get access when it clears.", "error")
+        return redirect(url_for("academy.profile"))
+
+    expected = _expected_kobo(sub)
+    if data.get("status") == "success" and int(data.get("amount", -1)) == expected:
+        services.mark_subscription_paid(sub)
+        flash("Payment confirmed — courses unlocked.", "success")
+        return redirect(url_for("academy.home"))
+
+    flash("Payment not confirmed yet.", "error")
+    return redirect(url_for("academy.profile"))
+
+
+@bp.route("/pay", methods=["POST"])
+@login_required
+def pay_again():
+    """Retry Paystack for pending/failed direct-entry learners."""
+    if current_user.role != "learner":
+        abort(403)
+    sub = services.get_subscription(current_user)
+    if sub is None:
+        flash("No Academy enrollment found.", "error")
+        return redirect(url_for("academy.profile"))
+    if sub.status == "active":
+        return redirect(url_for("academy.home"))
+
+    settings = AcademySettings.get()
+    sub.entry_path = "direct_pay"
+    sub.amount = settings.price_amount
+    sub.currency = settings.currency
+    sub.status = "pending"
+    if not sub.paystack_reference or sub.paystack_reference == "pending":
+        sub.paystack_reference = f"ac-{sub.id}-{secrets.token_hex(6)}"
+    else:
+        # New reference so Paystack accepts a fresh initialize
+        sub.paystack_reference = f"ac-{sub.id}-{secrets.token_hex(6)}"
+    db.session.commit()
+
+    try:
+        data = paystack.initialize_transaction(
+            email=current_user.email,
+            amount_kobo=_expected_kobo(sub),
+            reference=sub.paystack_reference,
+            callback_url=url_for("academy.callback", _external=True),
+            metadata={
+                "academy_subscription_id": sub.id,
+                "affiliate_id": sub.affiliate_id,
+                "user_id": current_user.id,
+            },
+        )
+    except paystack.PaystackError as e:
+        sub.status = "failed"
+        db.session.commit()
+        logger.warning("Paystack re-init failed for academy sub %s: %s", sub.id, e)
+        flash("Couldn't start checkout — try again shortly.", "error")
+        return redirect(url_for("academy.profile"))
+
+    return redirect(data["authorization_url"])
 
 
 @bp.route("/courses")
@@ -96,7 +280,8 @@ def courses():
     listings = services.published_courses(catalog=catalog, category=category)
     categories = services.course_categories(catalog=catalog)
     progress = {}
-    if current_user.is_authenticated:
+    can_learn = services.user_has_course_access()
+    if current_user.is_authenticated and can_learn:
         for c in listings:
             progress[c.id] = services.course_progress_percent(current_user, c)
     return render_template(
@@ -106,6 +291,7 @@ def courses():
         active_catalog=catalog,
         active_category=category,
         progress=progress,
+        can_learn=can_learn,
     )
 
 
@@ -113,16 +299,18 @@ def courses():
 def course_detail(slug):
     _gate_open()
     course = AcademyCourse.query.filter_by(slug=slug, status="published").first_or_404()
-    progress_by_id = services.progress_map_for_course(current_user, course)
-    percent = services.course_progress_percent(current_user, course)
-    nxt = services.next_lesson(course, progress_by_id)
+    can_learn = services.user_has_course_access()
+    progress_by_id = services.progress_map_for_course(current_user, course) if can_learn else {}
+    percent = services.course_progress_percent(current_user, course) if can_learn else 0
+    nxt = services.next_lesson(course, progress_by_id) if can_learn else None
     return render_template(
         "academy/course.html",
         course=course,
         progress_by_id=progress_by_id,
         percent=percent,
         next_lesson=nxt,
-        can_learn=services.user_has_academy_access(),
+        can_learn=can_learn,
+        subscription=services.get_subscription(current_user) if current_user.is_authenticated else None,
     )
 
 
@@ -130,9 +318,12 @@ def course_detail(slug):
 @login_required
 def lesson(lesson_id):
     _gate_open()
-    if not services.user_has_academy_access():
-        flash("Start a free Academy account to take lessons.", "error")
-        return redirect(url_for("academy.signup"))
+    if not services.user_has_course_access():
+        flash("Course access requires Direct Entry payment or admin approval.", "error")
+        sub = services.get_subscription(current_user)
+        if sub and sub.status == "relate_only":
+            return redirect(url_for("academy.messages"))
+        return redirect(url_for("academy.profile"))
 
     lesson = AcademyLesson.query.get_or_404(lesson_id)
     if not lesson.is_published or lesson.unit.course.status != "published":
@@ -144,7 +335,6 @@ def lesson(lesson_id):
         if action == "complete":
             services.mark_lesson_completed(current_user.id, lesson.id)
             flash("Lesson completed.", "success")
-            # Advance to next incomplete lesson when possible
             progress_by_id = services.progress_map_for_course(current_user, course)
             nxt = services.next_lesson(course, progress_by_id)
             if nxt and nxt.id != lesson.id:
@@ -171,19 +361,54 @@ def lesson(lesson_id):
     )
 
 
+@bp.route("/messages", methods=["GET", "POST"])
+@login_required
+def messages():
+    _gate_open()
+    if current_user.role not in ("learner", "admin"):
+        abort(403)
+    if current_user.role == "admin":
+        return redirect(url_for("admin.academy_learners"))
+
+    if not services.user_has_message_access():
+        flash("Create an Academy account to message admin.", "error")
+        return redirect(url_for("academy.signup"))
+
+    sub = services.get_subscription(current_user)
+    if request.method == "POST":
+        body = request.form.get("body") or ""
+        if services.post_message(current_user.id, current_user, body):
+            flash("Message sent.", "success")
+        else:
+            flash("Write a message first.", "error")
+        return redirect(url_for("academy.messages"))
+
+    thread = services.thread_for_learner(current_user.id)
+    return render_template(
+        "academy/messages.html",
+        thread=thread,
+        subscription=sub,
+        can_learn=services.user_has_course_access(),
+        settings=AcademySettings.get(),
+    )
+
+
 @bp.route("/profile")
 @login_required
 def profile():
     _gate_open()
     if current_user.role not in ("learner", "admin"):
         return redirect(url_for("academy.home"))
-    courses = services.published_courses()
+    can_learn = services.user_has_course_access()
+    courses = services.published_courses() if can_learn else []
     progress = {c.id: services.course_progress_percent(current_user, c) for c in courses}
-    sub = AcademySubscription.query.filter_by(user_id=current_user.id).first()
+    sub = services.get_subscription(current_user)
     return render_template(
         "academy/profile.html",
         courses=courses,
         progress=progress,
         subscription=sub,
-        completed_count=services.count_completed_lessons(current_user.id),
+        can_learn=can_learn,
+        completed_count=services.count_completed_lessons(current_user.id) if can_learn else 0,
+        settings=AcademySettings.get(),
     )

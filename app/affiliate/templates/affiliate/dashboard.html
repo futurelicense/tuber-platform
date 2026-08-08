@@ -10,6 +10,39 @@
 </div>
 
 <div class="card" style="margin-bottom:18px">
+  <h2>Academy course sales</h2>
+  <p class="hint">
+    Share these links for MoneyTuber Academy. When someone joins via your
+    <code>?ref=</code> and pays Direct Entry
+    ({{ academy_settings.currency }} {{ '%.2f' | format(academy_settings.price_amount) }}),
+    your commission is credited when Paystack clears.
+  </p>
+  <label for="academy_signup_url">Academy signup (best for sales)</label>
+  <input id="academy_signup_url" type="text" value="{{ academy_signup_url }}" readonly
+         onclick="this.select()" style="margin-bottom:12px;font-family:monospace">
+  <label for="academy_home_url">Academy home</label>
+  <input id="academy_home_url" type="text" value="{{ academy_home_url }}" readonly
+         onclick="this.select()" style="margin-bottom:14px;font-family:monospace">
+  {% if academy_course_share_links %}
+  <table>
+    <tr><th>Course</th><th>Catalog</th><th>Your link</th></tr>
+    {% for item in academy_course_share_links %}
+    <tr>
+      <td>{{ item.title }}</td>
+      <td>{{ item.catalog.replace('_', ' ') }}</td>
+      <td>
+        <input type="text" value="{{ item.url }}" readonly onclick="this.select()"
+               style="margin:0;font-family:monospace;font-size:12px">
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint" style="margin:0">No published Academy courses yet — signup link still works for Direct Entry sales.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:18px">
   <h2>Marketplace share links</h2>
   <p class="hint">Share a listing (or the full storefront). Purchases made through these links
     credit your commission when payment clears.</p>

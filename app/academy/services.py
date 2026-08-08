@@ -1,15 +1,19 @@
 from datetime import datetime, timezone
 
 from flask_login import current_user
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import (
     AcademyCourse,
     AcademyLesson,
     AcademyLessonProgress,
+    AcademyMessage,
     AcademySettings,
     AcademySubscription,
-    AcademyUnit,
+    Commission,
+    User,
+    effective_commission_rate,
 )
 
 
@@ -38,23 +42,49 @@ def academy_is_open():
     return bool(AcademySettings.get().is_open)
 
 
-def user_has_academy_access(user=None):
-    """Admins always; learners when Academy is open and (no sub required or active sub)."""
+def find_affiliate(code):
+    if not code:
+        return None
+    return User.query.filter_by(
+        referral_code=code.upper(), role="affiliate", is_active_flag=True
+    ).first()
+
+
+def get_subscription(user):
+    if user is None:
+        return None
+    return AcademySubscription.query.filter_by(user_id=user.id).first()
+
+
+def user_has_course_access(user=None):
+    """Paid direct-entry learners + admins/staff preview."""
     user = user or (current_user if current_user.is_authenticated else None)
-    settings = AcademySettings.get()
-    if not settings.is_open:
-        return bool(user and user.role == "admin")
+    if user is None:
+        return False
+    if user.role == "admin":
+        return True
+    if user.role in ("clipper", "producer", "affiliate"):
+        return True
+    if user.role != "learner":
+        return False
+    sub = get_subscription(user)
+    return bool(sub and sub.status == "active")
+
+
+def user_has_message_access(user=None):
+    user = user or (current_user if current_user.is_authenticated else None)
     if user is None:
         return False
     if user.role == "admin":
         return True
     if user.role != "learner":
-        # Staff can preview published content while logged in.
-        return user.role in ("clipper", "producer", "affiliate")
-    if not settings.require_subscription:
-        return True
-    sub = AcademySubscription.query.filter_by(user_id=user.id).first()
-    return bool(sub and sub.status in ("trialing", "active"))
+        return False
+    sub = get_subscription(user)
+    return bool(sub and sub.status in ("relate_only", "active", "pending"))
+
+
+# Back-compat name used by templates/routes
+user_has_academy_access = user_has_course_access
 
 
 def lesson_list_for_course(course):
@@ -68,7 +98,7 @@ def lesson_list_for_course(course):
 
 def course_progress_percent(user, course):
     lessons = lesson_list_for_course(course)
-    if not lessons or user is None or not user.is_authenticated:
+    if not lessons or user is None or not getattr(user, "is_authenticated", False):
         return 0
     ids = [l.id for l in lessons]
     done = (
@@ -136,17 +166,68 @@ def next_lesson(course, progress_by_id):
     return lessons[-1] if lessons else None
 
 
-def ensure_learner_subscription(user):
-    """When subscription is not required, still create an active row for bookkeeping."""
-    sub = AcademySubscription.query.filter_by(user_id=user.id).first()
-    if sub is None:
-        sub = AcademySubscription(user_id=user.id, status="active")
-        db.session.add(sub)
-        db.session.commit()
-    return sub
-
-
 def count_completed_lessons(user_id):
     return AcademyLessonProgress.query.filter_by(
         user_id=user_id, status="completed"
     ).count()
+
+
+def mark_subscription_paid(sub):
+    """Idempotent paid marker + affiliate commission (reference prefix ac-)."""
+    if sub.status == "active":
+        return
+
+    sub.status = "active"
+    sub.paid_at = datetime.now(timezone.utc)
+
+    if sub.affiliate_id is not None and sub.amount is not None:
+        rate = effective_commission_rate(sub.affiliate)
+        db.session.add(
+            Commission(
+                affiliate_id=sub.affiliate_id,
+                amount=sub.amount * rate / 100,
+                rate_percent_snapshot=rate,
+                note=f"Auto: Academy direct entry #{sub.id}",
+                created_by_id=None,
+                source_academy_subscription_id=sub.id,
+            )
+        )
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+
+
+def post_message(learner_id, sender, body):
+    body = (body or "").strip()
+    if not body:
+        return None
+    role = "admin" if sender.role == "admin" else "learner"
+    msg = AcademyMessage(
+        learner_id=learner_id,
+        sender_role=role,
+        sender_id=sender.id,
+        body=body,
+    )
+    db.session.add(msg)
+    db.session.commit()
+    return msg
+
+
+def thread_for_learner(learner_id):
+    return (
+        AcademyMessage.query.filter_by(learner_id=learner_id)
+        .order_by(AcademyMessage.created_at.asc())
+        .all()
+    )
+
+
+def grant_course_access(sub):
+    """Admin upgrades a relate-with-admin learner to full course access."""
+    sub.status = "active"
+    sub.entry_path = sub.entry_path or "relate_admin"
+    if sub.paid_at is None:
+        sub.paid_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return sub

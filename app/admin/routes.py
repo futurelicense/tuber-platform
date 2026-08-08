@@ -1067,3 +1067,50 @@ def academy_delete_lesson(lesson_id):
     db.session.commit()
     flash("Lesson deleted.", "success")
     return redirect(url_for("admin.academy_course_detail", course_id=course_id))
+
+
+# ── Academy learners / messaging ─────────────────────────────────────────────
+
+@bp.route("/academy/learners")
+def academy_learners():
+    from ..models import AcademySubscription
+
+    subs = (
+        AcademySubscription.query.order_by(AcademySubscription.started_at.desc()).all()
+    )
+    return render_template("admin/academy_learners.html", subscriptions=subs)
+
+
+@bp.route("/academy/learners/<int:user_id>", methods=["GET", "POST"])
+def academy_learner_detail(user_id):
+    from ..models import AcademySubscription
+    from ..academy import services as academy_services
+
+    learner = User.query.filter_by(id=user_id, role="learner").first_or_404()
+    sub = AcademySubscription.query.filter_by(user_id=learner.id).first()
+    if request.method == "POST":
+        body = request.form.get("body") or ""
+        if academy_services.post_message(learner.id, current_user, body):
+            flash("Reply sent.", "success")
+        else:
+            flash("Write a message first.", "error")
+        return redirect(url_for("admin.academy_learner_detail", user_id=learner.id))
+    thread = academy_services.thread_for_learner(learner.id)
+    return render_template(
+        "admin/academy_learner_detail.html",
+        learner=learner,
+        subscription=sub,
+        thread=thread,
+    )
+
+
+@bp.route("/academy/learners/<int:user_id>/grant-access", methods=["POST"])
+def academy_grant_access(user_id):
+    from ..models import AcademySubscription
+    from ..academy import services as academy_services
+
+    learner = User.query.filter_by(id=user_id, role="learner").first_or_404()
+    sub = AcademySubscription.query.filter_by(user_id=learner.id).first_or_404()
+    academy_services.grant_course_access(sub)
+    flash(f"Course access granted for {learner.email}.", "success")
+    return redirect(url_for("admin.academy_learner_detail", user_id=learner.id))

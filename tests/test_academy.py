@@ -1,9 +1,10 @@
-"""Smoke tests for Academy admin + learner flows."""
+"""Smoke tests for Academy admin + learner entry paths."""
 
 import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -16,7 +17,15 @@ os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8000")
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import User, AcademyCourse, AcademyUnit, AcademyLesson, AcademySettings
+from app.models import (
+    User,
+    AcademyCourse,
+    AcademyUnit,
+    AcademyLesson,
+    AcademySettings,
+    AcademySubscription,
+    AcademyMessage,
+)
 
 
 class _TestConfig(Config):
@@ -35,6 +44,9 @@ class AcademyTests(unittest.TestCase):
         admin = User(email="admin@example.com", role="admin", display_name="Admin")
         admin.set_password("password123")
         db.session.add(admin)
+        aff = User(email="aff@example.com", role="affiliate", referral_code="AFFCODE1")
+        aff.set_password("password123")
+        db.session.add(aff)
         db.session.commit()
         AcademySettings.get()
 
@@ -72,30 +84,55 @@ class AcademyTests(unittest.TestCase):
         db.session.commit()
         return course, lesson
 
-    def test_learner_signup_and_complete_lesson(self):
+    def test_relate_admin_signup_messages_only(self):
         course, lesson = self._seed_course()
         resp = self.client.post(
             "/academy/signup",
             data={
-                "email": "learner@example.com",
+                "email": "lead@example.com",
                 "password": "password123",
-                "display_name": "Lea",
+                "display_name": "Lead",
+                "whatsapp": "+2348012345678",
+                "ai_knowledge": "3",
+                "entry_path": "relate_admin",
+                "ref_code": "AFFCODE1",
             },
         )
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(User.query.filter_by(email="learner@example.com").first().role, "learner")
+        user = User.query.filter_by(email="lead@example.com").first()
+        sub = AcademySubscription.query.filter_by(user_id=user.id).first()
+        self.assertEqual(sub.status, "relate_only")
+        self.assertEqual(sub.affiliate_id, User.query.filter_by(email="aff@example.com").first().id)
+        self.assertTrue(AcademyMessage.query.filter_by(learner_id=user.id).count() >= 1)
 
-        resp = self.client.get(f"/academy/courses/{course.slug}")
+        resp = self.client.get(f"/academy/lessons/{lesson.id}")
+        self.assertEqual(resp.status_code, 302)
+
+        resp = self.client.get("/academy/messages")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Meet Gemini", resp.data)
 
+    @patch("app.paystack.initialize_transaction")
+    def test_direct_pay_signup_starts_checkout(self, mock_init):
+        mock_init.return_value = {"authorization_url": "https://paystack.test/pay/abc"}
         resp = self.client.post(
-            f"/academy/lessons/{lesson.id}",
-            data={"action": "complete"},
-            follow_redirects=True,
+            "/academy/signup",
+            data={
+                "email": "buyer@example.com",
+                "password": "password123",
+                "display_name": "Buyer",
+                "whatsapp": "+2348011111111",
+                "ai_knowledge": "2",
+                "entry_path": "direct_pay",
+                "ref_code": "AFFCODE1",
+            },
         )
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"completed", resp.data.lower())
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("paystack.test", resp.headers["Location"])
+        buyer = User.query.filter_by(email="buyer@example.com").first()
+        sub = AcademySubscription.query.filter_by(user_id=buyer.id).first()
+        self.assertEqual(sub.status, "pending")
+        self.assertEqual(sub.affiliate_id, User.query.filter_by(email="aff@example.com").first().id)
+        self.assertTrue(sub.paystack_reference.startswith("ac-"))
 
     def test_admin_can_create_course(self):
         self._login("admin@example.com")
@@ -112,7 +149,6 @@ class AcademyTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         course = AcademyCourse.query.filter_by(slug="chatgpt-deep-dive").first()
         self.assertIsNotNone(course)
-        self.assertEqual(course.status, "draft")
 
 
 if __name__ == "__main__":

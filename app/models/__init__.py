@@ -13,6 +13,7 @@ from .academy import (
     AcademyLessonProgress,
     AcademySettings,
     AcademySubscription,
+    AcademyMessage,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "AcademyLessonProgress",
     "AcademySettings",
     "AcademySubscription",
+    "AcademyMessage",
 ]

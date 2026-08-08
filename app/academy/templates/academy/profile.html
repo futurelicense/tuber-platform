@@ -10,27 +10,45 @@
     <div>
       <h1 style="font-size:24px;margin:0">{{ current_user.display_name or 'Learner' }}</h1>
       <div class="meta">{{ current_user.email }}</div>
+      {% if subscription and subscription.whatsapp %}
+      <div class="meta">WhatsApp {{ subscription.whatsapp }}</div>
+      {% endif %}
     </div>
   </div>
 </section>
 
 <section class="grid cols-3" style="margin-bottom:18px">
   <div class="card" style="padding:18px">
-    <div class="meta">Lessons completed</div>
-    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ completed_count }}</div>
-  </div>
-  <div class="card" style="padding:18px">
-    <div class="meta">Subscription</div>
+    <div class="meta">Access</div>
     <div style="font-size:18px;font-weight:800;margin-top:10px">
-      {% if subscription %}{{ subscription.status }}{% else %}none{% endif %}
+      {% if can_learn %}Courses unlocked{% elif subscription and subscription.status == 'relate_only' %}Messages only{% elif subscription and subscription.status == 'pending' %}Payment pending{% else %}{{ subscription.status if subscription else 'none' }}{% endif %}
     </div>
   </div>
   <div class="card" style="padding:18px">
-    <div class="meta">Courses in catalog</div>
-    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ courses|length }}</div>
+    <div class="meta">AI knowledge</div>
+    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ subscription.ai_knowledge if subscription and subscription.ai_knowledge else '—' }}/5</div>
+  </div>
+  <div class="card" style="padding:18px">
+    <div class="meta">Lessons completed</div>
+    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ completed_count }}</div>
   </div>
 </section>
 
+{% if not can_learn %}
+<section class="card" style="padding:18px;margin-bottom:18px">
+  <h2>Get course access</h2>
+  <p class="lede">Pay Direct Entry ({{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }}) or keep messaging admin.</p>
+  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+    <form method="post" action="{{ url_for('academy.pay_again') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit">Pay Direct Entry</button>
+    </form>
+    <a class="btn quiet" href="{{ url_for('academy.messages') }}">Message admin</a>
+  </div>
+</section>
+{% endif %}
+
+{% if can_learn %}
 <section class="card" style="padding:18px">
   <h2>Your course progress</h2>
   <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:14px">
@@ -55,4 +73,5 @@
     {% endfor %}
   </table>
 </section>
+{% endif %}
 {% endblock %}

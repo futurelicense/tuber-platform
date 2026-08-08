@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ learner.email }} — Academy learner{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <p class="hint" style="margin:0"><a href="{{ url_for('admin.academy_learners') }}">← Learners</a></p>
+  <h2 style="margin:8px 0 0">{{ learner.display_name or learner.email }}</h2>
+  <p class="hint">
+    {{ learner.email }}
+    {% if subscription %}
+    · WhatsApp {{ subscription.whatsapp or '—' }}
+    · AI {{ subscription.ai_knowledge or '—' }}/5
+    · {{ subscription.entry_path.replace('_', ' ') }}
+    · <span class="pill {{ 'ok' if subscription.status == 'active' else 'off' }}">{{ subscription.status }}</span>
+    {% endif %}
+  </p>
+  {% if subscription and subscription.status != 'active' %}
+  <form method="post" action="{{ url_for('admin.academy_grant_access', user_id=learner.id) }}" style="margin-top:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Grant course access</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Messages</h2>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;max-height:420px;overflow-y:auto">
+    {% for m in thread %}
+    <div style="padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+         background:{{ 'rgba(229,17,28,.08)' if m.sender_role == 'admin' else 'rgba(2,3,8,.35)' }}">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">
+        {{ m.sender_role }} · {{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}
+      </div>
+      <div style="white-space:pre-wrap">{{ m.body }}</div>
+    </div>
+    {% else %}
+    <p class="hint" style="margin:0">No messages yet.</p>
+    {% endfor %}
+  </div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="body">Reply</label>
+    <textarea id="body" name="body" rows="3" required></textarea>
+    <button type="submit">Send reply</button>
+  </form>
+</div>
+{% endblock %}

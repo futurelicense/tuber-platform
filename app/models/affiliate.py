@@ -86,6 +86,9 @@ class Commission(db.Model):
     # column rather than a shared polymorphic one — keeps both uniqueness
     # guarantees DB-enforced rather than relying on app-level convention.
     source_order_id = db.Column(db.Integer, db.ForeignKey("channel_orders.id"), unique=True)
+    source_academy_subscription_id = db.Column(
+        db.Integer, db.ForeignKey("academy_subscriptions.id"), unique=True
+    )
     created_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
@@ -101,7 +104,9 @@ class Commission(db.Model):
             "status in ('pending','approved','paid','voided')", name="ck_commission_status"
         ),
         db.CheckConstraint(
-            "source_enrollment_id is null or source_order_id is null",
+            "(CASE WHEN source_enrollment_id IS NULL THEN 0 ELSE 1 END)"
+            " + (CASE WHEN source_order_id IS NULL THEN 0 ELSE 1 END)"
+            " + (CASE WHEN source_academy_subscription_id IS NULL THEN 0 ELSE 1 END) <= 1",
             name="ck_commission_single_source",
         ),
     )

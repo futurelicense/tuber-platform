@@ -91,11 +91,12 @@
       <a class="hide-sm {{ 'active' if request.endpoint=='academy.home' }}" href="{{ url_for('academy.home') }}">Home</a>
       <a class="{{ 'active' if request.endpoint=='academy.courses' or request.endpoint=='academy.course_detail' }}" href="{{ url_for('academy.courses') }}">Courses</a>
       {% if current_user.is_authenticated %}
+      <a class="hide-sm {{ 'active' if request.endpoint=='academy.messages' }}" href="{{ url_for('academy.messages') }}">Messages</a>
       <a class="hide-sm {{ 'active' if request.endpoint=='academy.profile' }}" href="{{ url_for('academy.profile') }}">Profile</a>
       <a href="{{ url_for('auth.logout') }}">Log out</a>
       {% else %}
       <a href="{{ url_for('auth.login', next=url_for('academy.home')) }}">Log in</a>
-      <a class="cta" href="{{ url_for('academy.signup') }}">Start free</a>
+      <a class="cta" href="{{ url_for('academy.signup', ref=ref_code) if ref_code else url_for('academy.signup') }}">Join Academy</a>
       {% endif %}
     </nav>
   </div>

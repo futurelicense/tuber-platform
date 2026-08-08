@@ -1,6 +1,34 @@
 {% extends "academy/base.html" %}
 {% block title %}Home — MoneyTuber Academy{% endblock %}
 {% block content %}
+{% if not can_learn %}
+<section class="card" style="padding:22px 22px 18px;background:linear-gradient(120deg,#fff,#fff5f5);margin-bottom:18px">
+  <p class="eyebrow">Courses locked</p>
+  <h1 style="font-size:28px">
+    {% if subscription and subscription.status == 'relate_only' %}
+    You’re connected — unlock courses next
+    {% elif subscription and subscription.status == 'pending' %}
+    Finish Direct Entry payment
+    {% else %}
+    Get course access
+    {% endif %}
+  </h1>
+  <p class="lede">
+    {% if subscription and subscription.status == 'relate_only' %}
+    Message an admin anytime, or pay Direct Entry for instant course access.
+    {% else %}
+    Pay Direct Entry or keep messaging admin until you’re approved.
+    {% endif %}
+  </p>
+  <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+    <a class="btn" href="{{ url_for('academy.messages') }}">Open messages</a>
+    <form method="post" action="{{ url_for('academy.pay_again') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn quiet" type="submit">Pay Direct Entry</button>
+    </form>
+  </div>
+</section>
+{% else %}
 <section class="card" style="padding:22px 22px 18px;background:linear-gradient(120deg,#fff,#fff5f5)">
   <p class="eyebrow">Your AI income plan</p>
   <h1 style="font-size:28px">Keep shipping lessons. Unlock the next tool.</h1>
@@ -20,6 +48,7 @@
   </div>
   {% endif %}
 </section>
+{% endif %}
 
 {% if tools %}
 <section class="section">

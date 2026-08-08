@@ -6,21 +6,28 @@ COURSE_STATUSES = ("draft", "published", "archived")
 COURSE_CATALOGS = ("tool", "use_case", "challenge")
 LESSON_TYPES = ("read", "listen", "interactive", "video")
 PROGRESS_STATUSES = ("not_started", "in_progress", "completed")
-SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due", "canceled")
+ENTRY_PATHS = ("direct_pay", "relate_admin")
+SUBSCRIPTION_STATUSES = (
+    "pending",
+    "active",
+    "relate_only",
+    "failed",
+    "past_due",
+    "canceled",
+)
+MESSAGE_SENDERS = ("learner", "admin")
 
 
 class AcademySettings(db.Model):
-    """Singleton (id=1). Controls whether Academy is open and whether a
-    paid subscription is required to take lessons.
-    """
+    """Singleton (id=1). Direct-entry price and open flag."""
 
     __tablename__ = "academy_settings"
 
     id = db.Column(db.Integer, primary_key=True)
     is_open = db.Column(db.Boolean, nullable=False, default=True)
-    require_subscription = db.Column(db.Boolean, nullable=False, default=False)
-    price_amount = db.Column(db.Numeric(10, 2), nullable=False, default=5000)
-    currency = db.Column(db.String(3), nullable=False, default="NGN")
+    require_subscription = db.Column(db.Boolean, nullable=False, default=True)
+    price_amount = db.Column(db.Numeric(10, 2), nullable=False, default=25)
+    currency = db.Column(db.String(3), nullable=False, default="USD")
     updated_at = db.Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -34,9 +41,9 @@ class AcademySettings(db.Model):
             row = cls(
                 id=1,
                 is_open=True,
-                require_subscription=False,
-                price_amount=5000,
-                currency="NGN",
+                require_subscription=True,
+                price_amount=25,
+                currency="USD",
             )
             db.session.add(row)
             db.session.commit()
@@ -44,15 +51,22 @@ class AcademySettings(db.Model):
 
 
 class AcademySubscription(db.Model):
-    """Learner subscription row — Paystack wiring comes later; admin can
-    flip status manually for now.
-    """
+    """Learner enrollment: either paid direct entry or relate-with-admin."""
 
     __tablename__ = "academy_subscriptions"
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True, index=True)
-    status = db.Column(db.String(20), nullable=False, default="active")
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    entry_path = db.Column(db.String(20), nullable=False, default="direct_pay")
+    whatsapp = db.Column(db.String(50))
+    ai_knowledge = db.Column(db.Integer)  # 1–5
+    affiliate_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    referral_code_used = db.Column(db.String(12))
+    amount = db.Column(db.Numeric(10, 2))
+    currency = db.Column(db.String(3))
+    paystack_reference = db.Column(db.String(100), unique=True, index=True)
+    paid_at = db.Column(db.DateTime(timezone=True))
     started_at = db.Column(
         db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -64,19 +78,51 @@ class AcademySubscription(db.Model):
     )
 
     user = db.relationship("User", foreign_keys=[user_id])
+    affiliate = db.relationship("User", foreign_keys=[affiliate_id])
 
     __table_args__ = (
         db.CheckConstraint(
-            "status in ('trialing','active','past_due','canceled')",
+            "status in ('pending','active','relate_only','failed','past_due','canceled')",
             name="ck_academy_subscription_status",
+        ),
+        db.CheckConstraint(
+            "entry_path in ('direct_pay','relate_admin')",
+            name="ck_academy_subscription_entry_path",
+        ),
+        db.CheckConstraint(
+            "ai_knowledge is null or (ai_knowledge >= 1 and ai_knowledge <= 5)",
+            name="ck_academy_subscription_ai_knowledge",
+        ),
+    )
+
+
+class AcademyMessage(db.Model):
+    """Learner ↔ admin thread for relate-with-admin path (and support)."""
+
+    __tablename__ = "academy_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    learner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    sender_role = db.Column(db.String(20), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+    read_at = db.Column(db.DateTime(timezone=True))
+
+    learner = db.relationship("User", foreign_keys=[learner_id])
+    sender = db.relationship("User", foreign_keys=[sender_id])
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "sender_role in ('learner','admin')", name="ck_academy_message_sender_role"
         ),
     )
 
 
 class AcademyCourse(db.Model):
-    """A learner-facing course (tool deep-dive, use-case path, or challenge).
-    Admin authors the curriculum as units → lessons; learner UI comes later.
-    """
+    """A learner-facing course (tool deep-dive, use-case path, or challenge)."""
 
     __tablename__ = "academy_courses"
 
@@ -123,8 +169,6 @@ class AcademyCourse(db.Model):
 
 
 class AcademyUnit(db.Model):
-    """A path segment inside a course (e.g. UNIT 1 Gemini)."""
-
     __tablename__ = "academy_units"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -148,8 +192,6 @@ class AcademyUnit(db.Model):
 
 
 class AcademyLesson(db.Model):
-    """A single node on the learning path."""
-
     __tablename__ = "academy_lessons"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -182,8 +224,6 @@ class AcademyLesson(db.Model):
 
 
 class AcademyLessonProgress(db.Model):
-    """Per-learner lesson state — scaffold for the future learner app."""
-
     __tablename__ = "academy_lesson_progress"
 
     id = db.Column(db.Integer, primary_key=True)

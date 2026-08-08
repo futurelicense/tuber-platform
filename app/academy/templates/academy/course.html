@@ -39,8 +39,14 @@
       <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.lesson', lesson_id=next_lesson.id) }}">
         {{ 'Continue' if percent > 0 else 'Start' }}
       </a>
+      {% elif not can_learn and current_user.is_authenticated %}
+      <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.messages') }}">Message admin</a>
+      <form method="post" action="{{ url_for('academy.pay_again') }}" style="margin-top:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn quiet block" type="submit">Pay Direct Entry</button>
+      </form>
       {% elif not can_learn %}
-      <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.signup') }}">Start free to learn</a>
+      <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.signup', ref=ref_code) if ref_code else url_for('academy.signup') }}">Join to learn</a>
       {% endif %}
     </div>
   </aside>

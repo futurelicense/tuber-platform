@@ -133,7 +133,8 @@
       </div>
       <div class="nav-group">
         <div class="nav-label">Academy</div>
-        <a href="{{ url_for('admin.academy_courses') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.academy') }}">Courses</a>
+        <a href="{{ url_for('admin.academy_courses') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('admin.academy') and 'learner' not in request.endpoint }}">Courses</a>
+        <a href="{{ url_for('admin.academy_learners') }}" class="{{ 'active' if request.endpoint and 'learner' in request.endpoint }}">Learners</a>
         <a href="{{ url_for('academy.home') }}" target="_blank">Open learner app ↗</a>
       </div>
       <div class="nav-group">

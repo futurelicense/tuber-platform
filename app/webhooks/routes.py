@@ -13,7 +13,8 @@ from .. import paystack
 from ..extensions import csrf
 from ..marketplace.services import mark_order_paid
 from ..master_class.services import mark_enrollment_paid
-from ..models import ChannelOrder, MasterClassEnrollment
+from ..academy.services import mark_subscription_paid
+from ..models import ChannelOrder, MasterClassEnrollment, AcademySubscription
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,16 @@ def paystack_webhook():
         if order.status == "paid":
             return {"status": "already processed"}, 200
         _confirm_and_mark(reference, order, mark_order_paid)
+        return {"status": "ok"}, 200
+
+    if reference.startswith("ac-"):
+        sub = AcademySubscription.query.filter_by(paystack_reference=reference).first()
+        if sub is None:
+            logger.warning("Paystack webhook for unknown Academy reference %r", reference)
+            return {"status": "ignored"}, 200
+        if sub.status == "active":
+            return {"status": "already processed"}, 200
+        _confirm_and_mark(reference, sub, mark_subscription_paid)
         return {"status": "ok"}, 200
 
     logger.warning("Paystack webhook for unrecognized reference format %r", reference)

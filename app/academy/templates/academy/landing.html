@@ -7,12 +7,12 @@
   <p class="lede">Short courses on Claude, ChatGPT, Gemini, Midjourney and real use cases.
     Built for creators and operators, not engineers.</p>
   <div style="margin-top:22px;display:flex;gap:10px;flex-wrap:wrap">
-    <a class="btn" href="{{ url_for('academy.signup') }}">Create free account</a>
+    <a class="btn" href="{{ url_for('academy.signup', ref=ref_code) if ref_code else url_for('academy.signup') }}">Join Academy</a>
     <a class="btn quiet" href="{{ url_for('academy.courses') }}">Browse courses</a>
   </div>
-  {% if settings.require_subscription %}
-  <p class="hint" style="margin-top:14px">Subscription {{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }} after signup.</p>
-  {% endif %}
+  <p class="hint" style="margin-top:14px">
+    Direct Entry {{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }} · or Relate with Admin first
+  </p>
 </section>
 
 {% if tools %}

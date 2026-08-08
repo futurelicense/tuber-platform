@@ -159,6 +159,33 @@ def dashboard():
         }
         for listing in listings
     ]
+    from ..models import AcademyCourse, AcademySettings
+
+    academy_settings = AcademySettings.get()
+    academy_signup_url = url_for(
+        "academy.signup", ref=current_user.referral_code, _external=True
+    )
+    academy_home_url = url_for(
+        "academy.home", ref=current_user.referral_code, _external=True
+    )
+    academy_courses = (
+        AcademyCourse.query.filter_by(status="published")
+        .order_by(AcademyCourse.sort_order.asc(), AcademyCourse.created_at.desc())
+        .all()
+    )
+    academy_course_share_links = [
+        {
+            "title": course.title,
+            "catalog": course.catalog,
+            "url": url_for(
+                "academy.course_detail",
+                slug=course.slug,
+                ref=current_user.referral_code,
+                _external=True,
+            ),
+        }
+        for course in academy_courses
+    ]
     return render_template(
         "affiliate/dashboard.html",
         prospects=prospects,
@@ -167,4 +194,8 @@ def dashboard():
         referral_url=referral_url,
         marketplace_browse_url=marketplace_browse_url,
         listing_share_links=listing_share_links,
+        academy_signup_url=academy_signup_url,
+        academy_home_url=academy_home_url,
+        academy_course_share_links=academy_course_share_links,
+        academy_settings=academy_settings,
     )
