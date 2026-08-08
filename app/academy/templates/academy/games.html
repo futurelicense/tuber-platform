@@ -1,0 +1,42 @@
+{% extends "academy/base.html" %}
+{% block title %}Games — Academy{% endblock %}
+{% block content %}
+<section class="card" style="max-width:640px;margin:0 auto 22px;padding:22px">
+  <div style="display:flex;gap:14px;align-items:center">
+    <div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(145deg,#e5e7eb,#c7d2fe);display:grid;place-items:center;font-size:24px">🔎</div>
+    <div>
+      <h1 style="font-size:24px;margin:0">AI Novice</h1>
+      <div class="meta">Level 1</div>
+    </div>
+  </div>
+  <div style="margin-top:16px;display:flex;justify-content:space-between" class="meta">
+    <span>Progress</span><span>1/3</span>
+  </div>
+  <div class="bar" style="margin-top:8px"><i style="width:33%"></i></div>
+  <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f3f4f6;font-size:13.5px;font-weight:650">
+    🎯 Complete 2 practices to reach Curious Builder.
+  </div>
+</section>
+
+<section class="section" style="margin-top:10px">
+  <div class="section-head"><h2 style="letter-spacing:.08em;font-size:14px;color:var(--muted)">PLAY GAMES</h2></div>
+  <div class="grid cols-3">
+    {% set games = [
+      ('AI Spotter','Spot AI vs real images','❓','#ede9fe'),
+      ('Prompt Master','Good or bad prompt?','👍','#dbeafe'),
+      ('Prompt Detective','Match prompt & result','🔎','#dcfce7')
+    ] %}
+    {% for title, desc, icon, bg in games %}
+    <div class="card" style="overflow:hidden">
+      <div style="height:160px;background:linear-gradient(145deg,#ddd6fe,#a5b4fc);display:grid;place-items:center;font-size:48px">{{ icon }}</div>
+      <div style="padding:14px 16px 16px;position:relative">
+        <h3 style="margin:0;font-size:17px">{{ title }}</h3>
+        <p class="meta" style="margin-top:6px">{{ desc }}</p>
+        <div style="position:absolute;right:14px;bottom:14px;width:28px;height:28px;border-radius:8px;background:{{ bg }};display:grid;place-items:center;font-size:13px">{{ icon }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="meta" style="margin-top:16px;text-align:center">Games are preview shells — interactive play comes next.</p>
+</section>
+{% endblock %}

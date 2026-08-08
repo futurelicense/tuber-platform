@@ -2,38 +2,78 @@
 {% block title %}{{ course.title }} — Academy{% endblock %}
 {% block head %}
 <style>
-  .path-layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
-  @media (max-width:860px){ .path-layout{grid-template-columns:1fr} }
-  .path-side{position:sticky;top:78px}
-  .path-side .card{padding:18px}
-  .path{display:flex;flex-direction:column;gap:0;padding:10px 0}
-  .path-item{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:start;padding:10px 0}
-  .node{width:28px;height:28px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-    font-size:12px;font-weight:800;border:2px solid var(--line);background:#fff;color:var(--muted)}
-  .node.done{background:var(--ok);border-color:var(--ok);color:#fff}
-  .node.active{background:var(--brand);border-color:var(--brand);color:#fff}
-  .path-item + .path-item .rail{/* spacer */}
-  .section-break{margin:14px 0 6px;padding-top:14px;border-top:1px solid var(--line);
-    font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .path-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+  .path-top .center{text-align:center;flex:1}
+  .path-top h1{margin:0;font-size:24px}
+  .path-top .meta{margin-top:4px}
+  .pct-chip{
+    min-width:48px;height:48px;border-radius:50%;border:3px solid var(--brand);
+    display:grid;place-items:center;font-weight:800;color:var(--brand);background:#fff;font-size:13px;
+  }
+  .path-layout{display:grid;grid-template-columns:280px 1fr;gap:22px;align-items:start}
+  @media (max-width:900px){ .path-layout{grid-template-columns:1fr} }
+  .unit-bar{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;
+    background:var(--brand-soft);margin-bottom:12px;font-weight:750;font-size:14px;
+  }
+  .cert-card{padding:22px 18px;text-align:center}
+  .cert-ico{
+    width:84px;height:84px;margin:0 auto 12px;border-radius:18px;
+    background:linear-gradient(145deg,#efeaff,#ddd6fe);display:grid;place-items:center;font-size:34px;
+  }
+  .snake{position:relative;padding:10px 8% 30px;min-height:280px}
+  .snake-row{display:flex;align-items:flex-start;margin:0 0 34px;position:relative}
+  .snake-row.left{justify-content:flex-start}
+  .snake-row.right{justify-content:flex-end}
+  .snake-node{width:46%;max-width:220px;text-align:center;position:relative;z-index:1}
+  .node-btn{
+    width:64px;height:64px;margin:0 auto;border-radius:18px;display:grid;place-items:center;
+    font-size:22px;border:none;color:#fff;box-shadow:0 10px 24px -12px rgba(82,70,224,.55);
+  }
+  .node-btn.done{background:var(--ok)}
+  .node-btn.active{background:var(--brand)}
+  .node-btn.locked{background:#d8dbe7;color:#6b7280;box-shadow:none}
+  .node-label{margin-top:10px;font-size:13.5px;font-weight:700;line-height:1.25;color:var(--text)}
+  .start-tag{
+    position:absolute;top:-18px;left:50%;transform:translateX(-50%);
+    background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px;
+    font-size:11px;font-weight:800;color:var(--brand);box-shadow:var(--shadow);
+  }
+  .section-break{
+    margin:8px 0 28px;text-align:center;position:relative;color:var(--muted);
+    font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  }
+  .section-break::before,.section-break::after{
+    content:"";position:absolute;top:50%;width:28%;height:1px;background:var(--line);
+  }
+  .section-break::before{left:0}
+  .section-break::after{right:0}
 </style>
 {% endblock %}
 {% block content %}
-<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:18px">
-  <div>
-    <p class="eyebrow">{{ course.catalog.replace('_',' ') }}{% if course.category %} · {{ course.category }}{% endif %}</p>
+<div class="path-top">
+  <a class="btn ghost" href="{{ url_for('academy.courses') }}" style="padding:10px 12px">←</a>
+  <div class="center">
     <h1>{{ course.title }}</h1>
-    {% if course.summary %}<p class="lede">{{ course.summary }}</p>{% endif %}
+    <div class="meta">{{ course.catalog.replace('_',' ') }}{% if course.category %} · {{ course.category }}{% endif %}</div>
   </div>
-  <span class="pill">{{ percent }}% complete</span>
+  <div class="pct-chip">{{ percent }}%</div>
 </div>
 
 <div class="path-layout">
-  <aside class="path-side">
-    <div class="card">
-      <div class="eyebrow">Certificate</div>
-      <h2 style="font-size:18px;margin-top:8px">Earn your certificate</h2>
-      <p class="meta" style="margin-top:8px">Keep going to unlock completion for this path.</p>
-      <div class="bar" style="margin-top:14px"><i style="width:{{ percent }}%"></i></div>
+  <aside>
+    {% set first_unit = course.units[0] if course.units else None %}
+    {% if first_unit %}
+    <div class="unit-bar">
+      <span style="width:28px;height:28px;border-radius:8px;background:#fff;display:grid;place-items:center">✦</span>
+      {{ first_unit.title }}
+    </div>
+    {% endif %}
+    <div class="card cert-card">
+      <div class="cert-ico">🔒</div>
+      <h2 style="font-size:18px">Earn your certificate</h2>
+      <p class="meta" style="margin-top:8px">You’re on the right track! Keep going and unlock your personalized certificate of completion.</p>
+      <div class="bar" style="margin-top:16px"><i style="width:{{ percent }}%"></i></div>
       <div class="meta" style="margin-top:8px">{{ percent }}%</div>
       {% if next_lesson and can_learn %}
       <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.lesson', lesson_id=next_lesson.id) }}">
@@ -49,38 +89,44 @@
       <a class="btn block" style="margin-top:16px" href="{{ url_for('academy.signup', ref=ref_code) if ref_code else url_for('academy.signup') }}">Join to learn</a>
       {% endif %}
     </div>
+    {% if course.summary %}
+    <details class="card" style="margin-top:12px;padding:14px 16px">
+      <summary style="cursor:pointer;font-weight:750">About this course</summary>
+      <p class="meta" style="margin-top:10px;white-space:pre-wrap">{{ course.summary }}{% if course.description %}<br><br>{{ course.description }}{% endif %}</p>
+    </details>
+    {% endif %}
   </aside>
 
-  <section class="card" style="padding:18px 20px">
+  <section class="card" style="padding:22px 10px 10px;background:#fafbff">
+    {% set ns = namespace(i=0) %}
     {% for unit in course.units %}
       {% if unit.section_label %}<div class="section-break">{{ unit.section_label }}</div>{% endif %}
-      <div class="eyebrow" style="margin-top:8px">{{ unit.title }}</div>
-      <div class="path">
+      <div class="snake">
         {% for lesson in unit.lessons if lesson.is_published %}
         {% set row = progress_by_id.get(lesson.id) %}
         {% set done = row and row.status == 'completed' %}
         {% set active = next_lesson and next_lesson.id == lesson.id %}
-        <div class="path-item">
-          <div class="node {{ 'done' if done else ('active' if active else '') }}">
-            {% if done %}✓{% elif lesson.lesson_type == 'interactive' %}✦{% else %}{{ loop.index }}{% endif %}
-          </div>
-          <div>
-            <div style="font-weight:750">
-              {% if can_learn %}
-              <a href="{{ url_for('academy.lesson', lesson_id=lesson.id) }}" style="color:inherit">{{ lesson.title }}</a>
-              {% else %}
-              {{ lesson.title }}
-              {% endif %}
-            </div>
-            <div class="meta">{{ lesson.lesson_type }}{% if lesson.estimated_minutes %} · {{ lesson.estimated_minutes }} min{% endif %}</div>
+        {% set side = 'left' if ns.i % 2 == 0 else 'right' %}
+        <div class="snake-row {{ side }}">
+          <div class="snake-node">
+            {% if active %}<div class="start-tag">{{ 'Continue' if percent > 0 else 'Start' }}</div>{% endif %}
+            {% if can_learn %}
+            <a href="{{ url_for('academy.lesson', lesson_id=lesson.id) }}" class="node-btn {{ 'done' if done else ('active' if active else 'locked') }}">
+              {% if done %}✓{% elif active %}▶{% elif lesson.lesson_type == 'interactive' %}★{% else %}📘{% endif %}
+            </a>
+            {% else %}
+            <div class="node-btn locked">{% if done %}✓{% else %}📘{% endif %}</div>
+            {% endif %}
+            <div class="node-label">{{ lesson.title }}</div>
           </div>
         </div>
+        {% set ns.i = ns.i + 1 %}
         {% else %}
-        <p class="meta">No published lessons in this unit yet.</p>
+        <p class="meta" style="text-align:center">No published lessons in this unit yet.</p>
         {% endfor %}
       </div>
     {% else %}
-    <p class="meta">Curriculum coming soon.</p>
+    <p class="meta" style="text-align:center;padding:28px">Curriculum coming soon.</p>
     {% endfor %}
   </section>
 </div>

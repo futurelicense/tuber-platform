@@ -59,6 +59,10 @@ def home():
             if continue_course and can_learn
             else 0
         )
+        progress_by_course = {}
+        if can_learn:
+            for c in tools + use_cases:
+                progress_by_course[c.id] = services.course_progress_percent(current_user, c)
         return render_template(
             "academy/home.html",
             featured=featured,
@@ -66,6 +70,7 @@ def home():
             use_cases=use_cases,
             continue_course=continue_course,
             continue_progress=progress,
+            progress_by_course=progress_by_course,
             completed_count=services.count_completed_lessons(current_user.id) if can_learn else 0,
             subscription=sub,
             can_learn=can_learn,
@@ -281,9 +286,16 @@ def courses():
     categories = services.course_categories(catalog=catalog)
     progress = {}
     can_learn = services.user_has_course_access()
+    featured_continue = None
     if current_user.is_authenticated and can_learn:
         for c in listings:
             progress[c.id] = services.course_progress_percent(current_user, c)
+        featured = (
+            AcademyCourse.query.filter_by(status="published", is_featured=True)
+            .order_by(AcademyCourse.sort_order.asc())
+            .first()
+        )
+        featured_continue = featured or (listings[0] if listings else None)
     return render_template(
         "academy/courses.html",
         courses=listings,
@@ -292,7 +304,20 @@ def courses():
         active_category=category,
         progress=progress,
         can_learn=can_learn,
+        featured_continue=featured_continue,
     )
+
+
+@bp.route("/tools")
+def tools():
+    _gate_open()
+    return render_template("academy/tools.html")
+
+
+@bp.route("/games")
+def games():
+    _gate_open()
+    return render_template("academy/games.html")
 
 
 @bp.route("/courses/<slug>")

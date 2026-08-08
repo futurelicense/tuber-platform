@@ -1,31 +1,53 @@
 {% extends "academy/base.html" %}
-{% block title %}{{ lesson.title }} — {{ course.title }}{% endblock %}
+{% block title %}{{ lesson.title }} — Academy{% endblock %}
+{% block head %}
+<style>
+  .lesson-shell{max-width:720px;margin:0 auto}
+  .lesson-progress{height:4px;background:var(--track);border-radius:99px;overflow:hidden;margin:8px 0 22px}
+  .lesson-progress>i{display:block;height:100%;background:var(--brand)}
+  .lesson-art{
+    margin:22px auto 0;max-width:420px;height:220px;border-radius:22px;
+    background:linear-gradient(145deg,#ddd6fe,#a5b4fc 40%,#c4b5fd);
+    display:grid;place-items:center;font-size:64px;box-shadow:var(--shadow);
+  }
+  .lesson-footer{
+    position:sticky;bottom:0;margin-top:28px;padding:14px 0 0;background:linear-gradient(180deg,transparent,#f6f7fb 28%);
+  }
+</style>
+{% endblock %}
 {% block content %}
-<div style="max-width:720px;margin:0 auto">
-  <p class="meta">
-    <a href="{{ url_for('academy.course_detail', slug=course.slug) }}">← {{ course.title }}</a>
-    · {{ unit.title }} · {{ percent }}%
-  </p>
-  <p class="eyebrow" style="margin-top:14px">{{ lesson.lesson_type }}</p>
-  <h1>{{ lesson.title }}</h1>
+<div class="lesson-shell">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+    <a class="btn ghost" href="{{ url_for('academy.course_detail', slug=course.slug) }}" style="padding:10px 12px">←</a>
+    <div class="meta">{{ unit.title }}</div>
+    <div class="meta">{{ percent }}%</div>
+  </div>
+  <div class="lesson-progress"><i style="width:{{ percent }}%"></i></div>
 
-  <article class="card" style="padding:22px;margin-top:18px;line-height:1.7;font-size:15.5px;white-space:pre-wrap">
-{% if lesson.content %}{{ lesson.content }}{% else %}<span class="meta">No lesson content yet — add it in Admin → Academy.</span>{% endif %}
-  </article>
+  <p class="eyebrow">{{ lesson.lesson_type }}{% if lesson.estimated_minutes %} · {{ lesson.estimated_minutes }} min{% endif %}</p>
+  <h1 style="font-size:34px">{{ lesson.title }}</h1>
 
-  <form method="post" style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {% if progress_row and progress_row.status == 'completed' %}
-    <span class="pill ok">Completed</span>
-    {% else %}
-    <button class="btn" type="submit" name="action" value="complete">Mark complete{% if next_lesson %} &amp; continue{% endif %}</button>
-    {% endif %}
-    {% if prev_lesson %}
-    <a class="btn quiet" href="{{ url_for('academy.lesson', lesson_id=prev_lesson.id) }}">Previous</a>
-    {% endif %}
-    {% if next_lesson %}
-    <a class="btn quiet" href="{{ url_for('academy.lesson', lesson_id=next_lesson.id) }}">Next</a>
-    {% endif %}
-  </form>
+  {% if lesson.content %}
+  <div style="margin-top:18px;font-size:16.5px;line-height:1.7;white-space:pre-wrap">{{ lesson.content }}</div>
+  {% else %}
+  <p class="lede">Lesson content will appear here once authored in Admin.</p>
+  {% endif %}
+
+  <div class="lesson-art">✨</div>
+
+  <div class="lesson-footer">
+    <div style="display:flex;gap:10px;align-items:center">
+      {% if prev_lesson %}
+      <a class="btn ghost" href="{{ url_for('academy.lesson', lesson_id=prev_lesson.id) }}">Previous</a>
+      {% endif %}
+      <form method="post" style="flex:1;margin:0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="complete">
+        <button class="btn block" type="submit">
+          {% if next_lesson %}Continue{% else %}Complete course{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
 </div>
 {% endblock %}

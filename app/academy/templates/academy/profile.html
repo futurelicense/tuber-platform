@@ -1,10 +1,10 @@
 {% extends "academy/base.html" %}
 {% block title %}Profile — Academy{% endblock %}
 {% block content %}
-<section class="card" style="padding:22px;margin-bottom:18px">
+<section class="card" style="padding:22px;margin-bottom:14px">
   <div style="display:flex;gap:14px;align-items:center">
-    <div style="width:52px;height:52px;border-radius:50%;background:#fff1f2;color:var(--brand);
-      display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">
+    <div style="width:64px;height:64px;border-radius:50%;background:var(--brand-soft);color:var(--brand);
+      display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px">
       {{ (current_user.display_name or current_user.email)[0]|upper }}
     </div>
     <div>
@@ -17,27 +17,39 @@
   </div>
 </section>
 
-<section class="grid cols-3" style="margin-bottom:18px">
-  <div class="card" style="padding:18px">
-    <div class="meta">Access</div>
-    <div style="font-size:18px;font-weight:800;margin-top:10px">
-      {% if can_learn %}Courses unlocked{% elif subscription and subscription.status == 'relate_only' %}Messages only{% elif subscription and subscription.status == 'pending' %}Payment pending{% else %}{{ subscription.status if subscription else 'none' }}{% endif %}
+<a class="list-row" href="{{ url_for('academy.messages') }}">
+  <span style="width:28px;text-align:center">💬</span>
+  <div>
+    <div style="font-weight:750">Messages</div>
+    <div class="meta">Chat with admin</div>
+  </div>
+  <span class="chev">›</span>
+</a>
+
+<section class="card" style="padding:18px;margin:14px 0">
+  <h2 style="font-size:16px;margin-bottom:12px">Stats</h2>
+  <div class="grid cols-2">
+    <div style="padding:14px;border-radius:14px;background:#f8f7ff;border:1px solid var(--line)">
+      <div class="meta">Certificates earned</div>
+      <div style="font-size:28px;font-weight:800;margin-top:6px">0</div>
+    </div>
+    <div style="padding:14px;border-radius:14px;background:#f8f7ff;border:1px solid var(--line)">
+      <div class="meta">Longest streak</div>
+      <div style="font-size:28px;font-weight:800;margin-top:6px">0</div>
     </div>
   </div>
-  <div class="card" style="padding:18px">
-    <div class="meta">AI knowledge</div>
-    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ subscription.ai_knowledge if subscription and subscription.ai_knowledge else '—' }}/5</div>
-  </div>
-  <div class="card" style="padding:18px">
-    <div class="meta">Lessons completed</div>
-    <div style="font-size:32px;font-weight:800;margin-top:6px">{{ completed_count }}</div>
+  <div style="margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--brand-soft);color:var(--brand);font-weight:650;font-size:13.5px">
+    Your learning streak is gaining serious momentum.
   </div>
 </section>
 
-{% if not can_learn %}
-<section class="card" style="padding:18px;margin-bottom:18px">
-  <h2>Get course access</h2>
-  <p class="lede">Pay Direct Entry ({{ settings.currency }} {{ '%.2f' | format(settings.price_amount) }}) or keep messaging admin.</p>
+<section class="card" style="padding:18px;margin-bottom:14px">
+  <div class="meta">Access</div>
+  <div style="font-size:18px;font-weight:800;margin-top:8px">
+    {% if can_learn %}Courses unlocked{% elif subscription and subscription.status == 'relate_only' %}Messages only{% elif subscription and subscription.status == 'pending' %}Payment pending{% else %}{{ subscription.status if subscription else 'none' }}{% endif %}
+  </div>
+  <div class="meta" style="margin-top:6px">AI knowledge {{ subscription.ai_knowledge if subscription and subscription.ai_knowledge else '—' }}/5 · {{ completed_count }} lessons completed</div>
+  {% if not can_learn %}
   <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
     <form method="post" action="{{ url_for('academy.pay_again') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -45,33 +57,37 @@
     </form>
     <a class="btn quiet" href="{{ url_for('academy.messages') }}">Message admin</a>
   </div>
+  {% endif %}
+</section>
+
+{% if can_learn and courses %}
+<section style="margin:18px 0">
+  <div class="section-head"><h2>Your course progress</h2></div>
+  <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:6px">
+    {% for c in courses %}
+    <a class="card" href="{{ url_for('academy.course_detail', slug=c.slug) }}"
+       style="min-width:180px;padding:14px;color:inherit;flex:0 0 auto">
+      <div style="font-weight:800">{{ c.title }}</div>
+      <div class="meta" style="margin-top:6px">{{ progress.get(c.id, 0) }}%</div>
+      <div class="bar" style="margin-top:8px"><i style="width:{{ progress.get(c.id, 0) }}%"></i></div>
+    </a>
+    {% endfor %}
+  </div>
 </section>
 {% endif %}
 
-{% if can_learn %}
-<section class="card" style="padding:18px">
-  <h2>Your course progress</h2>
-  <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:14px">
-    <tr style="text-align:left;color:var(--muted)">
-      <th style="padding:8px 0;border-bottom:1px solid var(--line)">Course</th>
-      <th style="padding:8px 0;border-bottom:1px solid var(--line)">Progress</th>
-      <th style="padding:8px 0;border-bottom:1px solid var(--line)"></th>
-    </tr>
-    {% for c in courses %}
-    <tr>
-      <td style="padding:10px 0;border-bottom:1px solid var(--line)">{{ c.title }}</td>
-      <td style="padding:10px 0;border-bottom:1px solid var(--line);min-width:140px">
-        <div class="bar"><i style="width:{{ progress.get(c.id, 0) }}%"></i></div>
-        <div class="meta" style="margin-top:4px">{{ progress.get(c.id, 0) }}%</div>
-      </td>
-      <td style="padding:10px 0;border-bottom:1px solid var(--line)">
-        <a href="{{ url_for('academy.course_detail', slug=c.slug) }}">Open</a>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="3" class="meta" style="padding:14px 0">No published courses yet.</td></tr>
-    {% endfor %}
-  </table>
-</section>
-{% endif %}
+<a class="list-row" href="{{ url_for('academy.tools') }}">
+  <span style="width:28px;text-align:center">＋</span>
+  <div>
+    <div style="font-weight:750">Prompts Library</div>
+    <div class="meta">Coming soon inside AI Tools</div>
+  </div>
+  <span class="chev">›</span>
+</a>
+
+<a class="list-row" href="{{ url_for('auth.logout') }}" style="color:#dc2626;margin-top:8px">
+  <span style="width:28px;text-align:center">⎋</span>
+  <div style="font-weight:750">Log Out</div>
+  <span class="chev">›</span>
+</a>
 {% endblock %}

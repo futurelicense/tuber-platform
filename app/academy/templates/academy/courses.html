@@ -1,41 +1,88 @@
 {% extends "academy/base.html" %}
-{% block title %}Courses — MoneyTuber Academy{% endblock %}
+{% block title %}{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}Courses{% endif %} — Academy{% endblock %}
+{% block head %}
+<style>
+  .featured-continue{display:grid;grid-template-columns:160px 1fr;align-items:stretch}
+  @media (max-width:640px){ .featured-continue{grid-template-columns:1fr} }
+</style>
+{% endblock %}
 {% block content %}
-<section>
-  <p class="eyebrow">Catalog</p>
-  <h1>{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}All courses{% endif %}</h1>
-  <div class="filters">
-    <a href="{{ url_for('academy.courses') }}" class="{{ 'active' if not active_catalog }}">All</a>
-    <a href="{{ url_for('academy.courses', catalog='tool') }}" class="{{ 'active' if active_catalog=='tool' }}">AI tools</a>
-    <a href="{{ url_for('academy.courses', catalog='use_case') }}" class="{{ 'active' if active_catalog=='use_case' }}">Use cases</a>
-    <a href="{{ url_for('academy.courses', catalog='challenge') }}" class="{{ 'active' if active_catalog=='challenge' }}">Challenges</a>
-    {% for cat in categories %}
-    <a href="{{ url_for('academy.courses', catalog=active_catalog, category=cat) if active_catalog else url_for('academy.courses', category=cat) }}"
-       class="{{ 'active' if active_category==cat }}">{{ cat }}</a>
-    {% endfor %}
+{% if active_catalog %}
+<div class="page-title">
+  <a class="back" href="{{ url_for('academy.courses') }}" aria-label="Back">←</a>
+  <h1>{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}Challenges{% endif %}</h1>
+</div>
+{% else %}
+{% if featured_continue and can_learn %}
+<section class="card featured-continue" style="padding:0;overflow:hidden;margin-bottom:22px">
+  <div class="course-cover {% if featured_continue.cover_image_url %}has-img{% endif %}"
+       data-initials="{{ featured_continue.title[:2]|upper }}"
+       style="height:100%;min-height:140px;border-radius:0">
+    {% if featured_continue.cover_image_url %}<img src="{{ featured_continue.cover_image_url }}" alt="">{% endif %}
+  </div>
+  <div style="padding:20px 22px;display:flex;flex-direction:column;justify-content:center;gap:10px">
+    <div class="eyebrow">{{ featured_continue.category or 'AI Mastery' }}</div>
+    <h2 style="font-size:28px">{{ featured_continue.title }}</h2>
+    <a class="btn" style="align-self:flex-start" href="{{ url_for('academy.course_detail', slug=featured_continue.slug) }}">Continue learning</a>
+    <div class="bar" style="max-width:280px"><i style="width:{{ progress.get(featured_continue.id, 0) }}%"></i></div>
   </div>
 </section>
+{% endif %}
+<div style="display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+  <div>
+    <p class="eyebrow">Catalog</p>
+    <h1 style="font-size:30px">Courses</h1>
+  </div>
+</div>
+{% endif %}
 
-<section class="section" style="margin-top:18px">
+<div class="filters">
+  <a href="{{ url_for('academy.courses') }}" class="{{ 'active' if not active_catalog and not active_category }}">All</a>
+  <a href="{{ url_for('academy.courses', catalog='tool') }}" class="{{ 'active' if active_catalog=='tool' and not active_category }}">AI tools</a>
+  <a href="{{ url_for('academy.courses', catalog='use_case') }}" class="{{ 'active' if active_catalog=='use_case' and not active_category }}">Use cases</a>
+  <a href="{{ url_for('academy.courses', catalog='challenge') }}" class="{{ 'active' if active_catalog=='challenge' and not active_category }}">Challenges</a>
+  {% for cat in categories %}
+  <a href="{{ url_for('academy.courses', catalog=active_catalog, category=cat) if active_catalog else url_for('academy.courses', category=cat) }}"
+     class="{{ 'active' if active_category==cat }}">{{ cat }}</a>
+  {% endfor %}
+</div>
+
+<section class="section" style="margin-top:16px">
   {% if courses %}
-  <div class="grid cols-3">
+  <div class="grid {% if active_catalog == 'tool' %}cols-2{% else %}cols-4{% endif %}">
     {% for c in courses %}
-    <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover">{% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}</div>
+    <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}"
+       style="{% if active_catalog == 'tool' %}display:grid;grid-template-columns:72px 1fr;align-items:center;padding:14px;gap:14px{% endif %}">
+      {% if active_catalog == 'tool' %}
+      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+           style="height:64px;width:64px;border-radius:14px;margin:0">
+        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:18px">{{ c.title }}</h3>
+        <div class="meta" style="margin-top:4px">
+          {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}{{ c.units|length }} units{% endif %}
+          {% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}
+        </div>
+        <div class="bar" style="margin-top:10px"><i style="width:{{ progress.get(c.id, 0) if can_learn else 0 }}%"></i></div>
+        {% if c.tags %}
+        <div class="meta" style="margin-top:8px">{{ c.tags.replace(',', ' · ') }}</div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+           style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#c4b5fd,#818cf8{% elif loop.index0 % 3 == 1 %}#bfdbfe,#a78bfa{% else %}#fbcfe8,#8b5cf6{% endif %})">
+        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+      </div>
       <div class="course-body">
-        {% if c.category %}<span class="pill">{{ c.category }}</span>{% endif %}
         <h3>{{ c.title }}</h3>
-        {% if c.summary %}<div class="meta">{{ c.summary }}</div>{% endif %}
         <div class="meta">
           {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}{{ c.units|length }} units{% endif %}
           {% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}
         </div>
-        {% if progress.get(c.id) %}
-        <div class="bar"><i style="width:{{ progress[c.id] }}%"></i></div>
-        {% else %}
-        <div class="bar"><i style="width:0%"></i></div>
-        {% endif %}
+        <div class="bar"><i style="width:{{ progress.get(c.id, 0) if can_learn else 0 }}%"></i></div>
       </div>
+      {% endif %}
     </a>
     {% endfor %}
   </div>

@@ -2,7 +2,7 @@
 {% block title %}Home — MoneyTuber Academy{% endblock %}
 {% block content %}
 {% if not can_learn %}
-<section class="card" style="padding:22px 22px 18px;background:linear-gradient(120deg,#fff,#fff5f5);margin-bottom:18px">
+<section class="card" style="padding:22px;background:linear-gradient(120deg,#f5f3ff,#fff);margin-bottom:22px">
   <p class="eyebrow">Courses locked</p>
   <h1 style="font-size:28px">
     {% if subscription and subscription.status == 'relate_only' %}
@@ -13,13 +13,7 @@
     Get course access
     {% endif %}
   </h1>
-  <p class="lede">
-    {% if subscription and subscription.status == 'relate_only' %}
-    Message an admin anytime, or pay Direct Entry for instant course access.
-    {% else %}
-    Pay Direct Entry or keep messaging admin until you’re approved.
-    {% endif %}
-  </p>
+  <p class="lede">Message an admin anytime, or pay Direct Entry for instant access to the full Academy.</p>
   <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
     <a class="btn" href="{{ url_for('academy.messages') }}">Open messages</a>
     <form method="post" action="{{ url_for('academy.pay_again') }}">
@@ -28,41 +22,128 @@
     </form>
   </div>
 </section>
-{% else %}
-<section class="card" style="padding:22px 22px 18px;background:linear-gradient(120deg,#fff,#fff5f5)">
-  <p class="eyebrow">Your AI income plan</p>
-  <h1 style="font-size:28px">Keep shipping lessons. Unlock the next tool.</h1>
-  <p class="lede">{{ completed_count }} lesson{{ '' if completed_count == 1 else 's' }} completed so far.</p>
-  {% if continue_course %}
-  <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-    <div>
-      <div style="font-weight:800">{{ continue_course.title }}</div>
-      <div class="meta" style="margin-top:4px">{{ continue_progress }}% complete</div>
-      <div class="bar" style="width:220px;margin-top:8px"><i style="width:{{ continue_progress }}%"></i></div>
-    </div>
-    <a class="btn" href="{{ url_for('academy.course_detail', slug=continue_course.slug) }}">Continue learning</a>
-  </div>
-  {% else %}
-  <div style="margin-top:18px">
-    <a class="btn" href="{{ url_for('academy.courses') }}">Browse courses</a>
-  </div>
-  {% endif %}
-</section>
 {% endif %}
+
+<section class="card" style="padding:20px 22px;background:linear-gradient(105deg,#efeaff 0%,#f7f5ff 55%,#fff 100%);overflow:hidden">
+  <div style="display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center">
+    <div style="min-width:220px;flex:1">
+      <p class="eyebrow">Your AI income plan</p>
+      <h2 style="margin-top:8px;font-size:26px">Launch your AI side hustle</h2>
+      <p class="meta" style="margin-top:8px">Ship lessons across tools to unlock your next income path.</p>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      {% for c in tools[:6] %}
+      <div style="width:54px;text-align:center">
+        <div style="width:46px;height:46px;margin:0 auto;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff;
+             background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#a78bfa,#6366f1{% elif loop.index0 % 3 == 1 %}#60a5fa,#7c3aed{% else %}#f472b6,#8b5cf6{% endif %});
+             box-shadow:0 0 0 3px {{ '#bbf7d0' if continue_course and continue_course.id == c.id else 'transparent' }}">
+          {{ c.title[:2]|upper }}
+        </div>
+        <div class="meta" style="margin-top:4px;font-size:11px">
+          {% if progress_by_course.get(c.id) %}{{ progress_by_course[c.id] }}%{% else %}0%{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="meta">Publish tool courses to fill your plan.</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<div class="grid cols-2" style="margin-top:18px">
+  <section class="card" style="padding:18px">
+    {% if continue_course %}
+    <div style="display:grid;grid-template-columns:108px 1fr;gap:14px;align-items:center">
+      <div class="course-cover {% if continue_course.cover_image_url %}has-img{% endif %}"
+           data-initials="{{ continue_course.title[:2]|upper }}"
+           style="height:108px;border-radius:14px">
+        {% if continue_course.cover_image_url %}<img src="{{ continue_course.cover_image_url }}" alt="">{% endif %}
+      </div>
+      <div>
+        <div class="eyebrow">Continue learning</div>
+        <h2 style="font-size:22px;margin-top:6px">{{ continue_course.title }}</h2>
+        <p class="meta" style="margin-top:6px">{{ continue_course.summary or 'Keep going on your path.' }}</p>
+        <div style="margin-top:12px;display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <div class="meta">{{ continue_progress }}% complete</div>
+          <div class="meta">{{ completed_count }} lessons done</div>
+        </div>
+        <div class="bar" style="margin-top:8px"><i style="width:{{ continue_progress if can_learn else 0 }}%"></i></div>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          <a class="btn ghost" href="{{ url_for('academy.courses') }}">Other courses</a>
+          {% if can_learn %}
+          <a class="btn" href="{{ url_for('academy.course_detail', slug=continue_course.slug) }}">Continue learning</a>
+          {% else %}
+          <a class="btn" href="{{ url_for('academy.profile') }}">Unlock access</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <h2 style="font-size:20px">Start your first course</h2>
+    <p class="lede">Browse AI tools and use cases to begin.</p>
+    <a class="btn" style="margin-top:14px" href="{{ url_for('academy.courses') }}">Browse courses</a>
+    {% endif %}
+  </section>
+
+  <section class="card" style="padding:18px">
+    <div class="eyebrow">Weekly streaks</div>
+    <h2 style="font-size:20px;margin-top:8px">Build momentum</h2>
+    <div style="display:flex;justify-content:space-between;gap:6px;margin:18px 0 12px">
+      {% for d in ['S','M','T','W','T','F','S'] %}
+      <div style="flex:1;text-align:center">
+        <div style="width:34px;height:34px;margin:0 auto;border-radius:50%;border:2px solid var(--line);background:#fff"></div>
+        <div class="meta" style="margin-top:6px;font-size:11px">{{ d }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="meta">Finish 1 lesson to begin your streak.</p>
+  </section>
+</div>
+
+<section class="section">
+  <div class="section-head">
+    <h2>AI Tools hub</h2>
+    <a class="view-all" href="{{ url_for('academy.tools') }}">Open hub</a>
+  </div>
+  <div class="grid cols-6">
+    {% set hubs = [
+      ('AI Niche Finder','Find profitable niches','#dcfce7','🔍'),
+      ('Outreach','Write cold messages','#ede9fe','✉️'),
+      ('Image Gen','Create visuals fast','#dbeafe','🖼️'),
+      ('Scripts','YouTube & short scripts','#fce7f3','📝'),
+      ('Copywriting','Ads & landing copy','#fef9c3','✨'),
+      ('Ideas','Brainstorm offers','#ffedd5','💡')
+    ] %}
+    {% for title, desc, bg, icon in hubs %}
+    <a class="hub-card" href="{{ url_for('academy.tools') }}">
+      <div class="hub-ico" style="background:{{ bg }}">{{ icon }}</div>
+      <h3>{{ title }}</h3>
+      <p>{{ desc }}</p>
+    </a>
+    {% endfor %}
+  </div>
+</section>
 
 {% if tools %}
 <section class="section">
   <div class="section-head">
     <h2>Your income path</h2>
-    <a href="{{ url_for('academy.courses', catalog='tool') }}">View all</a>
+    <a class="view-all" href="{{ url_for('academy.courses', catalog='tool') }}">View all</a>
   </div>
-  <div class="grid cols-4">
+  <div class="grid cols-5">
     {% for c in tools %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover">{% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}</div>
+      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+           style="background:linear-gradient(145deg,{% if loop.index0 % 4 == 0 %}#c4b5fd,#818cf8{% elif loop.index0 % 4 == 1 %}#fda4af,#a78bfa{% elif loop.index0 % 4 == 2 %}#93c5fd,#8b5cf6{% else %}#fcd34d,#a78bfa{% endif %})">
+        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+      </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>
-        <div class="meta">{% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% endif %}{% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}</div>
+        <div class="meta">
+          {% if c.estimated_lessons %}{{ c.estimated_lessons }} lessons{% else %}{{ c.units|length }} units{% endif %}
+          {% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}
+        </div>
+        <div class="bar"><i style="width:{{ progress_by_course.get(c.id, 0) if can_learn else 0 }}%"></i></div>
       </div>
     </a>
     {% endfor %}
@@ -74,15 +155,19 @@
 <section class="section">
   <div class="section-head">
     <h2>Discover AI use cases</h2>
-    <a href="{{ url_for('academy.courses', catalog='use_case') }}">View all</a>
+    <a class="view-all" href="{{ url_for('academy.courses', catalog='use_case') }}">View all</a>
   </div>
-  <div class="grid cols-4">
+  <div class="grid cols-5">
     {% for c in use_cases %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover" style="background:linear-gradient(145deg,#201816,#4a1c22)"></div>
+      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="AI"
+           style="background:linear-gradient(145deg,#bfdbfe,#ddd6fe)">
+        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+      </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>
-        <div class="meta">{{ c.category or 'Use case' }}</div>
+        <div class="meta">{{ c.category or 'Use case' }}{% if c.estimated_hours %} · {{ c.estimated_hours }} hours{% endif %}</div>
+        <div class="bar"><i style="width:{{ progress_by_course.get(c.id, 0) if can_learn else 0 }}%"></i></div>
       </div>
     </a>
     {% endfor %}
