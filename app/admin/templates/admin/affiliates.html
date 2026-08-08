@@ -40,12 +40,14 @@
   <h2>Direct inquiries</h2>
   <p class="hint">Submitted via the public homepage, not attributed to any affiliate.</p>
   <table>
-    <tr><th>Name</th><th>Email</th><th>Interested in</th><th>Status</th><th>When</th></tr>
+    <tr><th>Name</th><th>Email</th><th>Phone</th><th>Interested in</th><th>Note</th><th>Status</th><th>When</th></tr>
     {% for p in direct_prospects %}
     <tr>
       <td>{{ p.name }}</td>
       <td>{{ p.email }}</td>
+      <td>{{ p.phone or '—' }}</td>
       <td>{{ p.interest_type.replace('_', ' ') }}</td>
+      <td style="max-width:220px;white-space:normal">{{ p.message or '—' }}</td>
       <td>
         <form method="post" action="{{ url_for('admin.update_prospect_status', prospect_id=p.id) }}" style="display:inline-flex;gap:6px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -59,7 +61,7 @@
       <td>{{ p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="5" style="color:var(--faint)">No direct inquiries yet.</td></tr>
+    <tr><td colspan="7" style="color:var(--faint)">No direct inquiries yet.</td></tr>
     {% endfor %}
   </table>
 </div>

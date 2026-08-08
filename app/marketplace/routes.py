@@ -44,13 +44,23 @@ def uploaded_file(filename):
     return send_from_directory(current_app.config["LISTING_UPLOAD_DIR"], filename)
 
 
+def _resolve_ref_code():
+    """Prefer ?ref= on the URL, persist it to session, else reuse session."""
+    from_query = (request.args.get("ref") or "").strip()
+    if from_query:
+        session["ref_code"] = from_query.upper()
+        return from_query.upper()
+    return (session.get("ref_code") or "").strip() or None
+
+
 @bp.route("/")
 def browse():
     release_stale_reservations()
     listings = ChannelListing.query.filter_by(status="published", availability="available").order_by(
         ChannelListing.created_at.desc()
     ).all()
-    return render_template("marketplace/browse.html", listings=listings)
+    ref_code = _resolve_ref_code()
+    return render_template("marketplace/browse.html", listings=listings, ref_code=ref_code)
 
 
 @bp.route("/<int:listing_id>")
@@ -58,7 +68,7 @@ def detail(listing_id):
     listing = ChannelListing.query.filter_by(id=listing_id, status="published").first_or_404()
     release_stale_reservations()
     db.session.refresh(listing)
-    ref_code = request.args.get("ref") or session.get("ref_code")
+    ref_code = _resolve_ref_code()
     return render_template("marketplace/detail.html", listing=listing, ref_code=ref_code)
 
 

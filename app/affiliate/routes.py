@@ -5,7 +5,7 @@ from . import bp
 from .codes import generate_referral_code
 from ..extensions import db
 from ..auth.decorators import roles_required
-from ..models import User, Prospect, Commission
+from ..models import User, Prospect, Commission, ChannelListing
 from ..models.affiliate import PROSPECT_INTEREST_TYPES
 
 
@@ -137,10 +137,34 @@ def dashboard():
         for status in ("pending", "approved", "paid")
     }
     referral_url = url_for("affiliate.capture", code=current_user.referral_code, _external=True)
+    marketplace_browse_url = url_for(
+        "marketplace.browse", ref=current_user.referral_code, _external=True
+    )
+    listings = (
+        ChannelListing.query.filter_by(status="published", availability="available")
+        .order_by(ChannelListing.created_at.desc())
+        .all()
+    )
+    listing_share_links = [
+        {
+            "title": listing.title,
+            "price": listing.price,
+            "currency": listing.currency,
+            "url": url_for(
+                "marketplace.detail",
+                listing_id=listing.id,
+                ref=current_user.referral_code,
+                _external=True,
+            ),
+        }
+        for listing in listings
+    ]
     return render_template(
         "affiliate/dashboard.html",
         prospects=prospects,
         commissions=commissions,
         totals=totals,
         referral_url=referral_url,
+        marketplace_browse_url=marketplace_browse_url,
+        listing_share_links=listing_share_links,
     )

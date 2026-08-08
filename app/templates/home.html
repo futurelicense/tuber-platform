@@ -43,10 +43,28 @@
   .hp-lede{margin:12px 0 0;color:var(--muted);font-size:14.5px;max-width:620px;line-height:1.6}
   @media (max-width:640px){ .hp-h2{font-size:30px} }
 
-  /* reveal-on-scroll */
+  /* reveal-on-scroll (+ stagger via --d) */
   .reveal{opacity:0;transform:translateY(22px);filter:blur(2px);
-    transition:opacity .7s ease-out,transform .7s ease-out,filter .7s ease-out}
+    transition:opacity .7s ease-out,transform .7s ease-out,filter .7s ease-out;
+    transition-delay:var(--d,0s)}
   .reveal.is-visible{opacity:1;transform:none;filter:none}
+  .hp-hero .reveal:nth-child(1){--d:0s}
+  .hp-hero .reveal:nth-child(2){--d:.08s}
+  .hp-hero .reveal:nth-child(3){--d:.16s}
+  .hp-hero .reveal:nth-child(4){--d:.24s}
+  .hp-hero .reveal:nth-child(5){--d:.32s}
+  .hp-hero-visual.reveal{--d:.2s}
+  .hp-grid > .reveal:nth-child(1){--d:.04s}
+  .hp-grid > .reveal:nth-child(2){--d:.14s}
+  .hp-grid > .reveal:nth-child(3){--d:.24s}
+  .hp-grid > .reveal:nth-child(4){--d:.34s}
+  .hp-faq-wrap > .reveal:nth-child(1){--d:0s}
+  .hp-faq-wrap > .reveal:nth-child(2){--d:.07s}
+  .hp-faq-wrap > .reveal:nth-child(3){--d:.14s}
+  .hp-faq-wrap > .reveal:nth-child(4){--d:.21s}
+  @media (prefers-reduced-motion: reduce){
+    .reveal{opacity:1;transform:none;filter:none;transition:none}
+  }
 
   /* HERO */
   .hp-hero{position:relative;overflow:hidden;padding:76px 24px 0}
@@ -96,12 +114,15 @@
     background:rgba(18,20,27,.5);padding:8px;box-shadow:0 24px 60px -30px rgba(0,0,0,.9)}
   .hp-hero-card img{width:100%;border-radius:10px;display:block}
   .hp-float{position:absolute;border:1px solid var(--line-bright);background:rgba(2,3,8,.95);
-    backdrop-filter:blur(6px);border-radius:12px;padding:11px 15px;box-shadow:0 18px 50px -18px rgba(229,17,28,.5)}
+    backdrop-filter:blur(6px);border-radius:12px;padding:11px 15px;box-shadow:0 18px 50px -18px rgba(229,17,28,.5);
+    animation:hp-float-y 4.2s ease-in-out infinite}
   .hp-float .n{margin:0;font-size:22px;line-height:1;color:var(--brand-soft);font-variant-numeric:tabular-nums}
   .hp-float .n.plain{color:var(--text)}
   .hp-float .l{margin:5px 0 0;font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
   .hp-float.bl{bottom:-18px;left:-14px}
-  .hp-float.tr{top:-14px;right:-10px}
+  .hp-float.tr{top:-14px;right:-10px;animation-delay:-1.6s}
+  @keyframes hp-float-y{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  @media (prefers-reduced-motion: reduce){ .hp-float{animation:none} }
   @media (max-width:480px){ .hp-float{padding:8px 11px} .hp-float .n{font-size:17px} }
 
   .hp-stats{max-width:980px;margin:64px auto 0;padding-top:36px;border-top:1px solid var(--line);
@@ -131,11 +152,12 @@
   .hp-card:hover{transform:translateY(-4px);border-color:rgba(229,17,28,.5)}
 
   /* PROOF SCREENS */
-  .hp-proof-shot{height:230px;background:linear-gradient(145deg,var(--panel-2),var(--ink));
+  .hp-proof-shot{height:260px;background:linear-gradient(145deg,var(--panel-2),var(--ink));
     border-bottom:1px solid var(--line);position:relative;overflow:hidden;border-radius:16px 16px 0 0}
+  .hp-proof-shot img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
   .hp-proof-shot .placeholder-note{position:absolute;inset:0;display:flex;align-items:center;
     justify-content:center;color:var(--faint);font-size:11px;text-align:center;padding:20px}
-  .hp-tag{position:absolute;left:16px;top:16px;border:1px solid rgba(229,17,28,.4);
+  .hp-tag{position:absolute;left:16px;top:16px;z-index:2;border:1px solid rgba(229,17,28,.4);
     background:rgba(2,3,8,.85);padding:5px 12px;border-radius:20px;font-size:10.5px;font-weight:700;
     text-transform:uppercase;letter-spacing:.12em;color:var(--brand-soft)}
   .hp-card-body{padding:22px}
@@ -154,6 +176,15 @@
     border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
     color:var(--brand-soft);white-space:nowrap}
   .hp-sparkline{width:100%;height:64px;margin-top:14px;display:block}
+  .hp-sparkline polyline{stroke-dasharray:1;stroke-dashoffset:1;
+    transition:stroke-dashoffset 1.1s cubic-bezier(.22,.8,.28,1) .15s}
+  .hp-sparkline polygon{opacity:0;transition:opacity .8s ease .35s}
+  .reveal.is-visible .hp-sparkline.is-drawn polyline{stroke-dashoffset:0}
+  .reveal.is-visible .hp-sparkline.is-drawn polygon{opacity:.18}
+  @media (prefers-reduced-motion: reduce){
+    .hp-sparkline polyline{stroke-dasharray:none;stroke-dashoffset:0}
+    .hp-sparkline polygon{opacity:.18}
+  }
   .hp-result-move{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);
     display:flex;align-items:center;justify-content:space-between;font-size:13.5px}
   .hp-result-move .from{color:var(--faint);text-decoration:line-through}
@@ -165,7 +196,7 @@
     background:rgba(18,20,27,.3)}
   .hp-partner-head{max-width:680px;margin:0 auto;text-align:center}
   .hp-partner-shot{border:1px solid rgba(229,17,28,.35);border-radius:16px;overflow:hidden;background:var(--ink)}
-  .hp-partner-shot .hp-proof-shot{height:280px;border-radius:0}
+  .hp-partner-shot .hp-proof-shot{height:320px;border-radius:0}
   .hp-partner-shot figcaption{padding:12px 18px;border-top:1px solid var(--line);
     font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
   .hp-earners{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:18px 0 0;padding:0;list-style:none}
@@ -220,15 +251,25 @@
   .hp-size-options input[type=radio]{position:absolute;opacity:0;pointer-events:none}
   .hp-size-options label{height:38px;display:flex;align-items:center;justify-content:center;
     border:1px solid var(--line-bright);border-radius:8px;font-size:11.5px;font-weight:700;
-    color:var(--muted);cursor:pointer;transition:all .15s}
+    color:var(--muted);cursor:pointer;transition:border-color .2s,background .2s,color .2s,transform .2s}
+  .hp-size-options label:hover{border-color:rgba(229,17,28,.45);color:var(--text)}
   .hp-size-options input[type=radio]:checked + label{border-color:var(--brand);
-    background:rgba(229,17,28,.15);color:var(--brand-soft)}
+    background:rgba(229,17,28,.15);color:var(--brand-soft);transform:scale(1.04)}
   .hp-offer-proof{margin-top:12px;text-align:center;font-size:11.5px;color:var(--faint)}
   .hp-offer-open-link{margin-top:22px}
 
   /* HOW / STEPS */
+  .hp-steps{position:relative}
+  @media (min-width:901px){
+    .hp-steps::before{content:"";position:absolute;left:8%;right:8%;top:42px;height:2px;
+      background:linear-gradient(90deg,transparent,rgba(229,17,28,.35),transparent);
+      transform:scaleX(0);transform-origin:left center;transition:transform 1s ease .2s;pointer-events:none}
+    .hp-steps.is-visible::before{transform:scaleX(1)}
+  }
   .hp-step{padding:24px}
-  .hp-step .n{font-size:42px;font-weight:800;color:rgba(229,17,28,.3)}
+  .hp-step .n{font-size:42px;font-weight:800;color:rgba(229,17,28,.3);
+    transition:color .4s ease,transform .5s ease;display:inline-block}
+  .hp-step.reveal.is-visible .n{color:rgba(229,17,28,.55);transform:scale(1.04)}
   .hp-step h3{margin:8px 0 0;font-size:21px}
   .hp-step p{margin:8px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6}
 
@@ -245,11 +286,16 @@
   .hp-faq-wrap{max-width:720px;margin:0 auto}
   .hp-faq{border-bottom:1px solid var(--line)}
   .hp-faq summary{padding:18px 4px;font-size:15px;cursor:pointer;list-style:none;
-    display:flex;justify-content:space-between;gap:14px}
+    display:flex;justify-content:space-between;gap:14px;transition:color .2s}
+  .hp-faq summary:hover{color:var(--brand-soft)}
   .hp-faq summary::-webkit-details-marker{display:none}
-  .hp-faq summary::after{content:"+";color:var(--brand);font-size:20px;flex-shrink:0}
-  .hp-faq[open] summary::after{content:"−"}
+  .hp-faq summary::after{content:"+";color:var(--brand);font-size:20px;flex-shrink:0;
+    transition:transform .25s ease}
+  .hp-faq[open] summary::after{content:"−";transform:rotate(180deg)}
   .hp-faq p{margin:0 4px 18px;color:var(--muted);font-size:13.5px;line-height:1.6}
+  .hp-faq[open] p{animation:hp-faq-in .35s ease}
+  @keyframes hp-faq-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){ .hp-faq[open] p{animation:none} }
 
   /* FINAL CTA */
   .hp-final{text-align:center;border-top:1px solid var(--line)}
@@ -345,7 +391,8 @@
     <div class="hp-card reveal">
       <div class="hp-proof-shot">
         <span class="hp-tag">The compounding curve</span>
-        <div class="placeholder-note">Real Studio screenshot — pending asset upload</div>
+        <img src="{{ url_for('static', filename='homepage/compounding-curve.png') }}"
+             alt="YouTube Studio analytics showing a flat multi-year baseline then a sharp views breakout to 4.09M lifetime views">
       </div>
       <div class="hp-card-body">
         <h3>5 years of compounding on one asset</h3>
@@ -362,7 +409,8 @@
     <div class="hp-card reveal">
       <div class="hp-proof-shot">
         <span class="hp-tag">Started July 2026</span>
-        <div class="placeholder-note">Real Studio screenshot — pending asset upload</div>
+        <img src="{{ url_for('static', filename='homepage/started-july.png') }}"
+             alt="YouTube Studio analytics for a new channel — 11.4K views and 3,824 subscribers in the first 28 days">
       </div>
       <div class="hp-card-body">
         <h3>A brand-new channel, first 28 days</h3>
@@ -448,7 +496,8 @@
   <div class="hp-grid cols-2" style="margin-top:44px;align-items:center;grid-template-columns:1.15fr 1fr">
     <figure class="hp-partner-shot reveal" style="margin:0">
       <div class="hp-proof-shot">
-        <div class="placeholder-note">Real Studio "Earn" screenshot — pending asset upload</div>
+        <img src="{{ url_for('static', filename='homepage/youtube-partner.png') }}"
+             alt="YouTube Studio Earn dashboard showing You're a YouTube Partner with Watch Page Ads, Shorts Feed Ads, Supers, and Partnerships active">
       </div>
       <figcaption>Real Studio account · payment set-up complete · paid 21st–26th monthly</figcaption>
     </figure>
@@ -654,7 +703,7 @@
 <!-- HOW -->
 <section class="hp-section" id="how" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(18,20,27,.25)">
   <h2 class="hp-h2 reveal">How the machine runs</h2>
-  <div class="hp-grid cols-3" style="margin-top:36px">
+  <div class="hp-grid cols-3 hp-steps" style="margin-top:36px" data-steps>
     <div class="hp-card hp-step reveal">
       <span class="n">01</span>
       <h3>Free teardown</h3>
@@ -743,19 +792,65 @@
   "use strict";
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  function prepareSparklines(root) {
+    (root || document).querySelectorAll(".hp-sparkline").forEach(function (svg) {
+      var line = svg.querySelector("polyline");
+      if (!line || reduceMotion) {
+        svg.classList.add("is-drawn");
+        return;
+      }
+      try {
+        var len = line.getTotalLength();
+        line.style.strokeDasharray = String(len);
+        line.style.strokeDashoffset = String(len);
+      } catch (e) { /* older browsers */ }
+    });
+  }
+
+  function drawSparklinesIn(el) {
+    el.querySelectorAll(".hp-sparkline").forEach(function (svg) {
+      var line = svg.querySelector("polyline");
+      if (line && !reduceMotion) {
+        // Drop inline offset so CSS can animate to 0
+        requestAnimationFrame(function () {
+          line.style.strokeDashoffset = "0";
+          svg.classList.add("is-drawn");
+        });
+      } else {
+        svg.classList.add("is-drawn");
+      }
+    });
+  }
+
+  function markStepsVisible(el) {
+    var steps = el.closest("[data-steps]");
+    if (steps) steps.classList.add("is-visible");
+  }
+
+  prepareSparklines();
+
   // Reveal-on-scroll
   var revealEls = document.querySelectorAll(".reveal");
   if (reduceMotion || !("IntersectionObserver" in window)) {
-    revealEls.forEach(function (el) { el.classList.add("is-visible"); });
+    revealEls.forEach(function (el) {
+      el.classList.add("is-visible");
+      drawSparklinesIn(el);
+      markStepsVisible(el);
+    });
+    document.querySelectorAll("[data-steps]").forEach(function (el) {
+      el.classList.add("is-visible");
+    });
   } else {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
           entry.target.classList.add("is-visible");
+          drawSparklinesIn(entry.target);
+          markStepsVisible(entry.target);
           io.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.15 });
+    }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
     revealEls.forEach(function (el) { io.observe(el); });
   }
 

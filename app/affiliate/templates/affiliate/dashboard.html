@@ -9,6 +9,32 @@
          style="margin-bottom:0;font-family:monospace">
 </div>
 
+<div class="card" style="margin-bottom:18px">
+  <h2>Marketplace share links</h2>
+  <p class="hint">Share a listing (or the full storefront). Purchases made through these links
+    credit your commission when payment clears.</p>
+  <label for="marketplace_browse_url">All listings</label>
+  <input id="marketplace_browse_url" type="text" value="{{ marketplace_browse_url }}" readonly
+         onclick="this.select()" style="margin-bottom:14px;font-family:monospace">
+  {% if listing_share_links %}
+  <table>
+    <tr><th>Listing</th><th>Price</th><th>Your link</th></tr>
+    {% for item in listing_share_links %}
+    <tr>
+      <td>{{ item.title }}</td>
+      <td>{{ item.currency }} {{ '%.2f' | format(item.price) }}</td>
+      <td>
+        <input type="text" value="{{ item.url }}" readonly onclick="this.select()"
+               style="margin:0;font-family:monospace;font-size:12px">
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint" style="margin:0">No published listings right now — check back when the storefront opens.</p>
+  {% endif %}
+</div>
+
 <div class="grid" style="margin-bottom:18px">
   <div class="stat"><div class="n">${{ '%.2f' | format(totals.pending) }}</div><div class="l">Pending commission</div></div>
   <div class="stat"><div class="n">${{ '%.2f' | format(totals.approved) }}</div><div class="l">Approved commission</div></div>
