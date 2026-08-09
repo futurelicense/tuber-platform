@@ -150,6 +150,45 @@ class AcademyTests(unittest.TestCase):
         course = AcademyCourse.query.filter_by(slug="chatgpt-deep-dive").first()
         self.assertIsNotNone(course)
 
+    def test_admin_rejects_invalid_category(self):
+        self._login("admin@example.com")
+        resp = self.client.post(
+            "/admin/academy/courses/new",
+            data={
+                "title": "Bad Cat",
+                "catalog": "tool",
+                "category": "Not A Real Category",
+                "sort_order": 0,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(AcademyCourse.query.filter_by(title="Bad Cat").first())
+
+    def test_admin_lesson_media_fields(self):
+        course, lesson = self._seed_course()
+        self._login("admin@example.com")
+        resp = self.client.post(
+            f"/admin/academy/lessons/{lesson.id}/edit",
+            data={
+                "title": "Prompt builder",
+                "lesson_type": "interactive",
+                "content": "<p>Try this <script>alert(1)</script><b>prompt</b></p>",
+                "interactive_instruction": "Fill the blanks",
+                "interactive_template": "A [subject] in [setting]",
+                "interactive_choices": "sunset\nocean",
+                "interactive_check_tip": "Clear subject + setting",
+                "video_embed_url": "",
+                "sort_order": 0,
+                "is_published": "on",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        lesson = AcademyLesson.query.get(lesson.id)
+        self.assertEqual(lesson.lesson_type, "interactive")
+        self.assertEqual(lesson.interactive_template, "A [subject] in [setting]")
+        self.assertIn("<b>prompt</b>", lesson.content)
+        self.assertNotIn("<script>", lesson.content)
+
 
 if __name__ == "__main__":
     unittest.main()

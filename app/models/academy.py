@@ -6,6 +6,36 @@ COURSE_STATUSES = ("draft", "published", "archived")
 COURSE_CATALOGS = ("tool", "use_case", "challenge")
 LESSON_TYPES = ("read", "listen", "interactive", "video")
 PROGRESS_STATUSES = ("not_started", "in_progress", "completed")
+
+# Predefined category pills shown in Admin + learner filters (keyed by catalog).
+COURSE_CATEGORIES_BY_CATALOG = {
+    "tool": (
+        "New",
+        "Research & Analysis",
+        "No-Code Apps",
+        "Writing",
+        "Business",
+        "Operations",
+        "Image Generation",
+    ),
+    "use_case": (
+        "New",
+        "Business",
+        "Operations",
+        "Marketing and Growth",
+        "Self-improvement",
+        "Creation",
+    ),
+    "challenge": (
+        "New",
+        "Beginner",
+        "Intermediate",
+        "Certificate",
+    ),
+}
+COURSE_CATEGORIES = tuple(
+    sorted({c for cats in COURSE_CATEGORIES_BY_CATALOG.values() for c in cats})
+)
 ENTRY_PATHS = ("direct_pay", "relate_admin")
 SUBSCRIPTION_STATUSES = (
     "pending",
@@ -200,7 +230,17 @@ class AcademyLesson(db.Model):
     )
     title = db.Column(db.String(200), nullable=False)
     lesson_type = db.Column(db.String(20), nullable=False, default="read")
+    # Rich HTML for read body / listen transcript / video notes / interactive intro.
     content = db.Column(db.Text)
+    # Type-specific media (filenames under LISTING_UPLOAD_DIR, served via marketplace.uploads).
+    audio_filename = db.Column(db.String(255))
+    video_filename = db.Column(db.String(255))
+    video_embed_url = db.Column(db.String(500))  # YouTube/Vimeo/etc. when not uploading
+    # Interactive prompt-builder fields
+    interactive_instruction = db.Column(db.Text)
+    interactive_template = db.Column(db.Text)  # e.g. "A beautiful [subject] in [setting]"
+    interactive_choices = db.Column(db.Text)  # newline-separated chip options
+    interactive_check_tip = db.Column(db.Text)
     estimated_minutes = db.Column(db.Integer)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_published = db.Column(db.Boolean, nullable=False, default=True)

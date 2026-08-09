@@ -27,13 +27,19 @@ def published_courses(catalog=None, category=None):
 
 
 def course_categories(catalog=None):
+    """Prefer predefined category pills for a catalog; fall back to used values."""
+    from ..models.academy import COURSE_CATEGORIES_BY_CATALOG, COURSE_CATEGORIES
+
+    if catalog and catalog in COURSE_CATEGORIES_BY_CATALOG:
+        return list(COURSE_CATEGORIES_BY_CATALOG[catalog])
+    if not catalog:
+        return list(COURSE_CATEGORIES)
     q = (
         db.session.query(AcademyCourse.category)
         .filter(AcademyCourse.status == "published", AcademyCourse.category.isnot(None))
         .filter(AcademyCourse.category != "")
     )
-    if catalog:
-        q = q.filter(AcademyCourse.catalog == catalog)
+    q = q.filter(AcademyCourse.catalog == catalog)
     rows = q.distinct().order_by(AcademyCourse.category.asc()).all()
     return [r[0] for r in rows]
 

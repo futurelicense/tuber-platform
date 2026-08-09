@@ -1,12 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Edit lesson — Academy — MoneyTuber{% endblock %}
 {% block content %}
-<div class="card" style="max-width:640px">
+<style>
+  .rte-wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px;background:var(--panel-2)}
+  .rte-bar{display:flex;gap:6px;flex-wrap:wrap;padding:8px;border-bottom:1px solid var(--line)}
+  .rte-bar button{background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;margin:0}
+  .rte-bar button:hover{border-color:var(--brand);color:#fff}
+  .rte-editor{min-height:180px;padding:12px;outline:none;color:var(--text);line-height:1.55}
+  .rte-editor:empty:before{content:attr(data-placeholder);color:var(--faint)}
+  .type-panel{display:none;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+  .type-panel.is-open{display:block}
+</style>
+<div class="card" style="max-width:720px">
   <p class="hint" style="margin:0 0 8px">
     <a href="{{ url_for('admin.academy_course_detail', course_id=lesson.unit.course_id) }}">← {{ lesson.unit.course.title }}</a>
   </p>
   <h2>Edit lesson</h2>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data" id="lesson-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="title">Title</label>
     <input id="title" name="title" value="{{ lesson.title }}" required autofocus>
@@ -18,9 +29,70 @@
       {% endfor %}
     </select>
 
-    <label for="content">Content</label>
-    <textarea id="content" name="content" rows="10">{{ lesson.content or '' }}</textarea>
-    <div class="hint">For interactive lessons, store prompt templates / check instructions here for now.</div>
+    <label>Content / script (rich text)</label>
+    <div class="rte-wrap">
+      <div class="rte-bar">
+        <button type="button" data-cmd="bold"><b>B</b></button>
+        <button type="button" data-cmd="italic"><i>I</i></button>
+        <button type="button" data-cmd="insertUnorderedList">• List</button>
+        <button type="button" data-cmd="insertOrderedList">1. List</button>
+        <button type="button" data-cmd="formatBlock" data-val="h3">H3</button>
+        <button type="button" data-cmd="createLink">Link</button>
+      </div>
+      <div id="rte" class="rte-editor" contenteditable="true" data-placeholder="Lesson body, transcript, or notes…">{{ (lesson.content or '') | safe }}</div>
+    </div>
+    <textarea id="content" name="content" hidden>{{ lesson.content or '' }}</textarea>
+    <div class="hint">Used for Read body, Listen transcript, Video notes, and Interactive intro.</div>
+
+    <div id="panel-listen" class="type-panel">
+      <h3 style="margin:0 0 10px;font-size:14px">Listen — audio</h3>
+      <label for="audio_file">Upload audio</label>
+      <input id="audio_file" name="audio_file" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,.mp3,.m4a,.wav,.ogg">
+      <div class="hint">MP3, M4A, WAV, or OGG.</div>
+      {% if lesson.audio_filename %}
+      <p class="hint">Current:
+        <a href="{{ url_for('marketplace.uploaded_file', filename=lesson.audio_filename) }}" target="_blank">{{ lesson.audio_filename }}</a>
+      </p>
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" name="clear_audio" style="width:auto;margin:0"> Remove current audio
+      </label>
+      {% endif %}
+    </div>
+
+    <div id="panel-video" class="type-panel">
+      <h3 style="margin:0 0 10px;font-size:14px">Video</h3>
+      <label for="video_embed_url">Embed / watch URL (optional)</label>
+      <input id="video_embed_url" name="video_embed_url" type="url"
+             value="{{ lesson.video_embed_url or '' }}"
+             placeholder="https://www.youtube.com/watch?v=…">
+      <label for="video_file">Or upload video file</label>
+      <input id="video_file" name="video_file" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov">
+      <div class="hint">MP4 / WEBM / MOV up to server limit — prefer URL for large files.</div>
+      {% if lesson.video_filename %}
+      <p class="hint">Current file:
+        <a href="{{ url_for('marketplace.uploaded_file', filename=lesson.video_filename) }}" target="_blank">{{ lesson.video_filename }}</a>
+      </p>
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" name="clear_video" style="width:auto;margin:0"> Remove uploaded video
+      </label>
+      {% endif %}
+    </div>
+
+    <div id="panel-interactive" class="type-panel">
+      <h3 style="margin:0 0 10px;font-size:14px">Interactive — prompt builder</h3>
+      <label for="interactive_instruction">Instruction</label>
+      <textarea id="interactive_instruction" name="interactive_instruction" rows="2"
+                placeholder="Write a simple request…">{{ lesson.interactive_instruction or '' }}</textarea>
+      <label for="interactive_template">Prompt template (use [brackets] for blanks)</label>
+      <textarea id="interactive_template" name="interactive_template" rows="2"
+                placeholder="A beautiful [subject] in [setting]">{{ lesson.interactive_template or '' }}</textarea>
+      <label for="interactive_choices">Choice chips (one per line)</label>
+      <textarea id="interactive_choices" name="interactive_choices" rows="4"
+                placeholder="over the ocean&#10;sunset&#10;neon city">{{ lesson.interactive_choices or '' }}</textarea>
+      <label for="interactive_check_tip">Check tip</label>
+      <textarea id="interactive_check_tip" name="interactive_check_tip" rows="2"
+                placeholder="You should see a clear subject + setting.">{{ lesson.interactive_check_tip or '' }}</textarea>
+    </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
@@ -43,4 +115,41 @@
     <button type="submit">Save lesson</button>
   </form>
 </div>
+<script>
+(function () {
+  const typeEl = document.getElementById('lesson_type');
+  const panels = {
+    listen: document.getElementById('panel-listen'),
+    video: document.getElementById('panel-video'),
+    interactive: document.getElementById('panel-interactive'),
+  };
+  function syncPanels() {
+    Object.keys(panels).forEach(function (k) {
+      panels[k].classList.toggle('is-open', typeEl.value === k);
+    });
+  }
+  typeEl.addEventListener('change', syncPanels);
+  syncPanels();
+
+  const rte = document.getElementById('rte');
+  const content = document.getElementById('content');
+  document.querySelectorAll('.rte-bar button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const cmd = btn.getAttribute('data-cmd');
+      if (cmd === 'createLink') {
+        const url = prompt('Link URL');
+        if (url) document.execCommand('createLink', false, url);
+      } else if (cmd === 'formatBlock') {
+        document.execCommand(cmd, false, btn.getAttribute('data-val'));
+      } else {
+        document.execCommand(cmd, false, null);
+      }
+      rte.focus();
+    });
+  });
+  document.getElementById('lesson-form').addEventListener('submit', function () {
+    content.value = rte.innerHTML;
+  });
+})();
+</script>
 {% endblock %}

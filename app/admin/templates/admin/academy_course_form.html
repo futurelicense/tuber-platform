@@ -25,10 +25,11 @@
       {% endfor %}
     </select>
 
-    <label for="category">Category / filter pill</label>
-    <input id="category" name="category" type="text"
-           value="{{ course.category if course else '' }}"
-           placeholder="e.g. Image Generation, Business, Marketing and Growth">
+    <label for="category">Category</label>
+    <select id="category" name="category">
+      <option value="">— Select category —</option>
+    </select>
+    <div class="hint">Predefined filter pills for this catalog.</div>
 
     <label for="tags">Tags (comma-separated)</label>
     <input id="tags" name="tags" type="text"
@@ -78,4 +79,29 @@
        class="btn secondary" style="margin-left:8px">Cancel</a>
   </form>
 </div>
+<script>
+(function () {
+  const byCatalog = {{ categories_by_catalog | tojson }};
+  const catalogEl = document.getElementById('catalog');
+  const categoryEl = document.getElementById('category');
+  const selected = {{ (course.category if course and course.category else '') | tojson }};
+
+  function refill() {
+    const catalog = catalogEl.value;
+    const options = byCatalog[catalog] || [];
+    categoryEl.innerHTML = '<option value="">— Select category —</option>';
+    options.forEach(function (name) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      if (name === selected) opt.selected = true;
+      categoryEl.appendChild(opt);
+    });
+  }
+  catalogEl.addEventListener('change', function () {
+    refill();
+  });
+  refill();
+})();
+</script>
 {% endblock %}

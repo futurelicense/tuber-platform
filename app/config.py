@@ -107,7 +107,9 @@ class Config:
     # Caps total request body size — a payment-adjacent upload form is a
     # plausible DoS target otherwise. 15MB comfortably fits the 6-image
     # per-listing cap enforced in app/admin/routes.py.
-    MAX_CONTENT_LENGTH = 15 * 1024 * 1024
+    # 40MB: marketplace images + Academy audio/small video uploads.
+    # Prefer video_embed_url for large lesson videos.
+    MAX_CONTENT_LENGTH = 40 * 1024 * 1024
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

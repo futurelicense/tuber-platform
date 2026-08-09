@@ -8,6 +8,7 @@ from . import bp
 from . import services
 from .. import paystack
 from ..extensions import db
+from ..html_sanitize import sanitize_rich_text, video_iframe_src
 from ..models import (
     User,
     AcademyCourse,
@@ -374,6 +375,11 @@ def lesson(lesson_id):
     prev_lesson = lessons[idx - 1] if idx > 0 else None
     next_lesson = lessons[idx + 1] if idx + 1 < len(lessons) else None
     row = progress_by_id.get(lesson.id)
+    interactive_choices = [
+        c.strip()
+        for c in (lesson.interactive_choices or "").splitlines()
+        if c.strip()
+    ]
     return render_template(
         "academy/lesson.html",
         course=course,
@@ -383,6 +389,9 @@ def lesson(lesson_id):
         prev_lesson=prev_lesson,
         next_lesson=next_lesson,
         percent=services.course_progress_percent(current_user, course),
+        content_html=sanitize_rich_text(lesson.content),
+        video_embed_src=video_iframe_src(lesson.video_embed_url),
+        interactive_choices=interactive_choices,
     )
 
 

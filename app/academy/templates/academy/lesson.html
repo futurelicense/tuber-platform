@@ -5,11 +5,23 @@
   .lesson-shell{max-width:720px;margin:0 auto}
   .lesson-progress{height:4px;background:var(--track);border-radius:99px;overflow:hidden;margin:8px 0 22px}
   .lesson-progress>i{display:block;height:100%;background:var(--brand)}
-  .lesson-art{
-    margin:22px auto 0;max-width:420px;height:220px;border-radius:22px;
-    background:linear-gradient(145deg,#1b1e26,#3a1520 40%,#7a1520);
-    display:grid;place-items:center;font-size:64px;box-shadow:var(--shadow);
-  }
+  .lesson-body{margin-top:18px;font-size:16.5px;line-height:1.7;color:var(--ink)}
+  .lesson-body p{margin:0 0 12px}
+  .lesson-body ul,.lesson-body ol{margin:0 0 12px;padding-left:1.25em}
+  .lesson-media{margin:22px 0;border-radius:16px;overflow:hidden;background:#111;box-shadow:var(--shadow)}
+  .lesson-media audio,.lesson-media video{display:block;width:100%}
+  .lesson-media iframe{display:block;width:100%;aspect-ratio:16/9;border:0;background:#000}
+  .ix-box{margin:22px 0;padding:18px;border-radius:16px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .ix-instruction{font-weight:700;margin:0 0 10px}
+  .ix-template{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;
+    background:#f3f4f8;padding:12px 14px;border-radius:10px;margin:0 0 14px;line-height:1.5}
+  .ix-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .ix-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;
+    font-size:13px;cursor:pointer;color:var(--ink)}
+  .ix-chip:hover,.ix-chip.is-on{border-color:var(--brand);color:var(--brand);background:#fff5f5}
+  .ix-out{width:100%;min-height:90px;border:1px solid var(--line);border-radius:12px;padding:12px;
+    font:inherit;resize:vertical;margin:0 0 10px}
+  .ix-tip{font-size:13px;color:var(--muted);margin:0}
   .lesson-footer{
     position:sticky;bottom:0;margin-top:28px;padding:14px 0 0;background:linear-gradient(180deg,transparent,#f6f7fb 28%);
   }
@@ -27,13 +39,81 @@
   <p class="eyebrow">{{ lesson.lesson_type }}{% if lesson.estimated_minutes %} · {{ lesson.estimated_minutes }} min{% endif %}</p>
   <h1 style="font-size:34px">{{ lesson.title }}</h1>
 
-  {% if lesson.content %}
-  <div style="margin-top:18px;font-size:16.5px;line-height:1.7;white-space:pre-wrap">{{ lesson.content }}</div>
-  {% else %}
+  {% if content_html %}
+  <div class="lesson-body">{{ content_html | safe }}</div>
+  {% elif lesson.lesson_type == 'read' %}
   <p class="lede">Lesson content will appear here once authored in Admin.</p>
   {% endif %}
 
-  <div class="lesson-art">✨</div>
+  {% if lesson.lesson_type == 'listen' and lesson.audio_filename %}
+  <div class="lesson-media">
+    <audio controls preload="metadata"
+           src="{{ url_for('marketplace.uploaded_file', filename=lesson.audio_filename) }}"></audio>
+  </div>
+  {% endif %}
+
+  {% if lesson.lesson_type == 'video' %}
+    {% if video_embed_src %}
+    <div class="lesson-media">
+      <iframe src="{{ video_embed_src }}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen title="{{ lesson.title }}"></iframe>
+    </div>
+    {% elif lesson.video_filename %}
+    <div class="lesson-media">
+      <video controls preload="metadata"
+             src="{{ url_for('marketplace.uploaded_file', filename=lesson.video_filename) }}"></video>
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {% if lesson.lesson_type == 'interactive' %}
+  <div class="ix-box" id="ix-box">
+    {% if lesson.interactive_instruction %}
+    <p class="ix-instruction">{{ lesson.interactive_instruction }}</p>
+    {% endif %}
+    {% if lesson.interactive_template %}
+    <div class="ix-template" id="ix-template">{{ lesson.interactive_template }}</div>
+    {% endif %}
+    {% if interactive_choices %}
+    <div class="ix-chips" id="ix-chips">
+      {% for c in interactive_choices %}
+      <button type="button" class="ix-chip" data-chip="{{ c }}">{{ c }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <textarea class="ix-out" id="ix-out" placeholder="Build your prompt here…"></textarea>
+    {% if lesson.interactive_check_tip %}
+    <p class="ix-tip">{{ lesson.interactive_check_tip }}</p>
+    {% endif %}
+  </div>
+  <script>
+  (function () {
+    const out = document.getElementById('ix-out');
+    const template = document.getElementById('ix-template');
+    const chips = document.getElementById('ix-chips');
+    if (template && out && !out.value) {
+      out.value = template.textContent.trim();
+    }
+    if (!chips || !out) return;
+    chips.addEventListener('click', function (e) {
+      const btn = e.target.closest('.ix-chip');
+      if (!btn) return;
+      const text = btn.getAttribute('data-chip') || '';
+      btn.classList.toggle('is-on');
+      const val = out.value;
+      const bracket = val.match(/\[([^\]]+)\]/);
+      if (bracket) {
+        out.value = val.replace(bracket[0], text);
+      } else if (val) {
+        out.value = val + (val.endsWith(' ') ? '' : ' ') + text;
+      } else {
+        out.value = text;
+      }
+      out.focus();
+    });
+  })();
+  </script>
+  {% endif %}
 
   <div class="lesson-footer">
     <div style="display:flex;gap:10px;align-items:center">

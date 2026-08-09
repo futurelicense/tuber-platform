@@ -35,9 +35,22 @@ from ..models import (
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
 from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
-from ..models.academy import COURSE_CATALOGS, LESSON_TYPES
-from ..uploads import save_image, delete_image, UploadRejected
+from ..models.academy import (
+    COURSE_CATALOGS,
+    COURSE_CATEGORIES,
+    COURSE_CATEGORIES_BY_CATALOG,
+    LESSON_TYPES,
+)
+from ..uploads import (
+    save_image,
+    save_media,
+    delete_image,
+    UploadRejected,
+    ALLOWED_AUDIO_EXTENSIONS,
+    ALLOWED_VIDEO_EXTENSIONS,
+)
 from ..marketplace.services import release_listing
+from ..html_sanitize import sanitize_rich_text
 
 MAX_ATTACHMENTS_PER_LISTING = 6
 
@@ -778,18 +791,77 @@ def _unique_course_slug(title, exclude_id=None):
 
 
 def _course_form_fields():
+    category = (request.form.get("category") or "").strip()
     return {
         "title": (request.form.get("title") or "").strip(),
         "summary": (request.form.get("summary") or "").strip(),
         "description": (request.form.get("description") or "").strip(),
         "catalog": request.form.get("catalog") or "tool",
-        "category": (request.form.get("category") or "").strip(),
+        "category": category or None,
         "tags": (request.form.get("tags") or "").strip(),
         "estimated_lessons": request.form.get("estimated_lessons", type=int),
         "estimated_hours": request.form.get("estimated_hours", type=float),
         "is_featured": request.form.get("is_featured") == "on",
         "sort_order": request.form.get("sort_order", type=int) or 0,
     }
+
+
+def _validate_course_category(catalog, category):
+    if not category:
+        return True
+    allowed = COURSE_CATEGORIES_BY_CATALOG.get(catalog) or ()
+    return category in allowed or category in COURSE_CATEGORIES
+
+
+def _course_form_context(course=None):
+    return {
+        "course": course,
+        "catalogs": COURSE_CATALOGS,
+        "categories_by_catalog": COURSE_CATEGORIES_BY_CATALOG,
+    }
+
+
+def _delete_lesson_media(lesson):
+    if lesson.audio_filename:
+        delete_image(lesson.audio_filename)
+    if lesson.video_filename:
+        delete_image(lesson.video_filename)
+
+
+def _apply_lesson_media_uploads(lesson):
+    """Handle audio/video uploads and clear flags on lesson edit. Returns error or None."""
+    if request.form.get("clear_audio") == "on" and lesson.audio_filename:
+        delete_image(lesson.audio_filename)
+        lesson.audio_filename = None
+    if request.form.get("clear_video") == "on" and lesson.video_filename:
+        delete_image(lesson.video_filename)
+        lesson.video_filename = None
+
+    audio = request.files.get("audio_file")
+    if audio and audio.filename:
+        try:
+            filename, _, _, _ = save_media(
+                audio, "academy-audio", ALLOWED_AUDIO_EXTENSIONS, label="audio"
+            )
+        except UploadRejected as e:
+            return str(e)
+        if lesson.audio_filename:
+            delete_image(lesson.audio_filename)
+        lesson.audio_filename = filename
+
+    video = request.files.get("video_file")
+    if video and video.filename:
+        try:
+            filename, _, _, _ = save_media(
+                video, "academy-video", ALLOWED_VIDEO_EXTENSIONS, label="video"
+            )
+        except UploadRejected as e:
+            return str(e)
+        if lesson.video_filename:
+            delete_image(lesson.video_filename)
+        lesson.video_filename = filename
+
+    return None
 
 
 def _delete_stored_academy_cover(cover_url):
@@ -857,35 +929,27 @@ def academy_update_settings():
 def academy_new_course():
     if request.method == "POST":
         fields = _course_form_fields()
+        ctx = _course_form_context()
         if not fields["title"]:
             flash("Title is required.", "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=None,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
         if fields["catalog"] not in COURSE_CATALOGS:
             flash("Invalid catalog.", "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=None,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
+        if not _validate_course_category(fields["catalog"], fields["category"]):
+            flash("Pick a category from the list for this catalog.", "error")
+            return render_template("admin/academy_course_form.html", **ctx)
         cover_url, cover_err = _resolve_course_cover_url()
         if cover_err:
             flash(cover_err, "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=None,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
         course = AcademyCourse(
             title=fields["title"],
             slug=_unique_course_slug(fields["title"]),
             summary=fields["summary"] or None,
             description=fields["description"] or None,
             catalog=fields["catalog"],
-            category=fields["category"] or None,
+            category=fields["category"],
             tags=fields["tags"] or None,
             estimated_lessons=fields["estimated_lessons"],
             estimated_hours=fields["estimated_hours"],
@@ -899,9 +963,7 @@ def academy_new_course():
         db.session.commit()
         flash(f"Course '{course.title}' created as draft.", "success")
         return redirect(url_for("admin.academy_course_detail", course_id=course.id))
-    return render_template(
-        "admin/academy_course_form.html", course=None, catalogs=COURSE_CATALOGS
-    )
+    return render_template("admin/academy_course_form.html", **_course_form_context())
 
 
 @bp.route("/academy/courses/<int:course_id>")
@@ -919,35 +981,27 @@ def academy_edit_course(course_id):
     course = AcademyCourse.query.get_or_404(course_id)
     if request.method == "POST":
         fields = _course_form_fields()
+        ctx = _course_form_context(course)
         if not fields["title"]:
             flash("Title is required.", "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=course,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
         if fields["catalog"] not in COURSE_CATALOGS:
             flash("Invalid catalog.", "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=course,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
+        if not _validate_course_category(fields["catalog"], fields["category"]):
+            flash("Pick a category from the list for this catalog.", "error")
+            return render_template("admin/academy_course_form.html", **ctx)
         cover_url, cover_err = _resolve_course_cover_url(course.cover_image_url)
         if cover_err:
             flash(cover_err, "error")
-            return render_template(
-                "admin/academy_course_form.html",
-                course=course,
-                catalogs=COURSE_CATALOGS,
-            )
+            return render_template("admin/academy_course_form.html", **ctx)
         if course.title != fields["title"]:
             course.slug = _unique_course_slug(fields["title"], exclude_id=course.id)
         course.title = fields["title"]
         course.summary = fields["summary"] or None
         course.description = fields["description"] or None
         course.catalog = fields["catalog"]
-        course.category = fields["category"] or None
+        course.category = fields["category"]
         course.tags = fields["tags"] or None
         course.estimated_lessons = fields["estimated_lessons"]
         course.estimated_hours = fields["estimated_hours"]
@@ -957,9 +1011,7 @@ def academy_edit_course(course_id):
         db.session.commit()
         flash("Course updated.", "success")
         return redirect(url_for("admin.academy_course_detail", course_id=course.id))
-    return render_template(
-        "admin/academy_course_form.html", course=course, catalogs=COURSE_CATALOGS
-    )
+    return render_template("admin/academy_course_form.html", **_course_form_context(course))
 
 
 @bp.route("/academy/courses/<int:course_id>/publish", methods=["POST"])
@@ -1077,23 +1129,38 @@ def academy_edit_lesson(lesson_id):
         estimated_minutes = request.form.get("estimated_minutes", type=int)
         sort_order = request.form.get("sort_order", type=int)
         is_published = request.form.get("is_published") == "on"
+        video_embed_url = (request.form.get("video_embed_url") or "").strip() or None
+        interactive_instruction = (
+            (request.form.get("interactive_instruction") or "").strip() or None
+        )
+        interactive_template = (
+            (request.form.get("interactive_template") or "").strip() or None
+        )
+        interactive_choices = (
+            (request.form.get("interactive_choices") or "").strip() or None
+        )
+        interactive_check_tip = (
+            (request.form.get("interactive_check_tip") or "").strip() or None
+        )
+        form_ctx = dict(lesson=lesson, lesson_types=LESSON_TYPES)
         if not title:
             flash("Lesson title is required.", "error")
-            return render_template(
-                "admin/academy_lesson_form.html",
-                lesson=lesson,
-                lesson_types=LESSON_TYPES,
-            )
+            return render_template("admin/academy_lesson_form.html", **form_ctx)
         if lesson_type not in LESSON_TYPES:
             flash("Invalid lesson type.", "error")
-            return render_template(
-                "admin/academy_lesson_form.html",
-                lesson=lesson,
-                lesson_types=LESSON_TYPES,
-            )
+            return render_template("admin/academy_lesson_form.html", **form_ctx)
+        media_err = _apply_lesson_media_uploads(lesson)
+        if media_err:
+            flash(media_err, "error")
+            return render_template("admin/academy_lesson_form.html", **form_ctx)
         lesson.title = title
         lesson.lesson_type = lesson_type
-        lesson.content = content or None
+        lesson.content = sanitize_rich_text(content) or None
+        lesson.video_embed_url = video_embed_url
+        lesson.interactive_instruction = interactive_instruction
+        lesson.interactive_template = interactive_template
+        lesson.interactive_choices = interactive_choices
+        lesson.interactive_check_tip = interactive_check_tip
         lesson.estimated_minutes = estimated_minutes
         if sort_order is not None:
             lesson.sort_order = sort_order
@@ -1112,6 +1179,7 @@ def academy_edit_lesson(lesson_id):
 def academy_delete_lesson(lesson_id):
     lesson = AcademyLesson.query.get_or_404(lesson_id)
     course_id = lesson.unit.course_id
+    _delete_lesson_media(lesson)
     db.session.delete(lesson)
     db.session.commit()
     flash("Lesson deleted.", "success")
