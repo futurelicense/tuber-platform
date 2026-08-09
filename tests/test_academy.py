@@ -150,6 +150,22 @@ class AcademyTests(unittest.TestCase):
         course = AcademyCourse.query.filter_by(slug="chatgpt-deep-dive").first()
         self.assertIsNotNone(course)
 
+    def test_seed_sample_course(self):
+        from app.academy.sample_course import seed_sample_course, SAMPLE_SLUG
+
+        course, created = seed_sample_course()
+        self.assertTrue(created)
+        self.assertEqual(course.slug, SAMPLE_SLUG)
+        self.assertEqual(course.status, "published")
+        self.assertEqual(len(course.units), 3)
+        lessons = [l for u in course.units for l in u.lessons]
+        self.assertEqual(len(lessons), 9)
+        types = {l.lesson_type for l in lessons}
+        self.assertTrue({"read", "listen", "interactive", "video"}.issubset(types))
+        again, created_again = seed_sample_course()
+        self.assertFalse(created_again)
+        self.assertEqual(again.id, course.id)
+
     def test_homepage_showcases_academy_when_open(self):
         course, _lesson = self._seed_course()
         course.is_featured = True

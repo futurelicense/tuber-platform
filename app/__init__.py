@@ -75,6 +75,29 @@ def register_cli(app):
         db.session.commit()
         click.echo(f"Created admin {email}.")
 
+    @app.cli.command("seed-academy-sample")
+    @click.option("--force", is_flag=True, help="Delete and recreate if the sample slug already exists.")
+    def seed_academy_sample(force):
+        """Load the published ChatGPT sample course (3 units, 9 lessons)."""
+        from .academy.sample_course import seed_sample_course, SAMPLE_SLUG
+
+        try:
+            course, created = seed_sample_course(force=force)
+        except RuntimeError as e:
+            click.echo(str(e))
+            raise SystemExit(1)
+        if not created:
+            click.echo(
+                f"Sample course already exists (slug={SAMPLE_SLUG}, id={course.id}). "
+                "Re-run with --force to recreate."
+            )
+            return
+        lesson_count = sum(len(u.lessons) for u in course.units)
+        click.echo(
+            f"Seeded '{course.title}' — {len(course.units)} units, {lesson_count} lessons "
+            f"(id={course.id}, slug={course.slug})."
+        )
+
     @app.cli.command("run-suggest-agent")
     def run_suggest_agent():
         """Poll active WatchedChannels for new uploads and queue AI clip
