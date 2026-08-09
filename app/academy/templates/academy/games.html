@@ -22,13 +22,13 @@
   <div class="section-head"><h2 style="letter-spacing:.08em;font-size:14px;color:var(--muted)">PLAY GAMES</h2></div>
   <div class="grid cols-3">
     {% set games = [
-      ('AI Spotter','Spot AI vs real images','❓','#ede9fe'),
-      ('Prompt Master','Good or bad prompt?','👍','#dbeafe'),
+      ('AI Spotter','Spot AI vs real images','❓','#fff1f2'),
+      ('Prompt Master','Good or bad prompt?','👍','#ffe4e6'),
       ('Prompt Detective','Match prompt & result','🔎','#dcfce7')
     ] %}
     {% for title, desc, icon, bg in games %}
     <div class="card" style="overflow:hidden">
-      <div style="height:160px;background:linear-gradient(145deg,#ddd6fe,#a5b4fc);display:grid;place-items:center;font-size:48px">{{ icon }}</div>
+      <div style="height:160px;background:linear-gradient(145deg,#1b1e26,#3a1520);display:grid;place-items:center;font-size:48px">{{ icon }}</div>
       <div style="padding:14px 16px 16px;position:relative">
         <h3 style="margin:0;font-size:17px">{{ title }}</h3>
         <p class="meta" style="margin-top:6px">{{ desc }}</p>

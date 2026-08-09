@@ -1,7 +1,7 @@
 {% extends "academy/base.html" %}
 {% block title %}MoneyTuber Academy — Learn AI tools & side-income skills{% endblock %}
 {% block content %}
-<section class="card" style="padding:28px 26px;background:linear-gradient(120deg,#efeaff,#fff 60%)">
+<section class="card" style="padding:28px 26px;background:linear-gradient(120deg,#fff1f2,#fff 60%)">
   <p class="eyebrow">AI learning for creators</p>
   <h1>Prompting, productivity, and income paths — without the jargon.</h1>
   <p class="lede">Short courses on Claude, ChatGPT, Gemini, Midjourney and real use cases.
@@ -25,7 +25,7 @@
     {% for c in tools %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
       <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
-           style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#c4b5fd,#818cf8{% elif loop.index0 % 3 == 1 %}#fda4af,#a78bfa{% else %}#93c5fd,#8b5cf6{% endif %})">
+           style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#3a1520,#e5111c{% elif loop.index0 % 3 == 1 %}#7a1520,#ff5b63{% else %}#1b1e26,#e5111c{% endif %})">
         {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
       </div>
       <div class="course-body">
@@ -52,7 +52,7 @@
     {% for c in use_cases %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
       <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="AI"
-           style="background:linear-gradient(145deg,#bfdbfe,#ddd6fe)">
+           style="background:linear-gradient(145deg,#1b1e26,#3a1520)">
         {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
       </div>
       <div class="course-body">

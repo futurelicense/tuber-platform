@@ -71,7 +71,7 @@
       </div>
       {% else %}
       <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
-           style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#c4b5fd,#818cf8{% elif loop.index0 % 3 == 1 %}#bfdbfe,#a78bfa{% else %}#fbcfe8,#8b5cf6{% endif %})">
+           style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#3a1520,#e5111c{% elif loop.index0 % 3 == 1 %}#2a1218,#e5111c{% else %}#3a1520,#ff5b63{% endif %})">
         {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
       </div>
       <div class="course-body">

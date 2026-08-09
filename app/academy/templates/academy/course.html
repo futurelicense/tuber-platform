@@ -19,7 +19,7 @@
   .cert-card{padding:22px 18px;text-align:center}
   .cert-ico{
     width:84px;height:84px;margin:0 auto 12px;border-radius:18px;
-    background:linear-gradient(145deg,#efeaff,#ddd6fe);display:grid;place-items:center;font-size:34px;
+    background:linear-gradient(145deg,#fff1f2,#ffe4e6);display:grid;place-items:center;font-size:34px;
   }
   .snake{position:relative;padding:10px 8% 30px;min-height:280px}
   .snake-row{display:flex;align-items:flex-start;margin:0 0 34px;position:relative}
@@ -28,7 +28,7 @@
   .snake-node{width:46%;max-width:220px;text-align:center;position:relative;z-index:1}
   .node-btn{
     width:64px;height:64px;margin:0 auto;border-radius:18px;display:grid;place-items:center;
-    font-size:22px;border:none;color:#fff;box-shadow:0 10px 24px -12px rgba(82,70,224,.55);
+    font-size:22px;border:none;color:#fff;box-shadow:0 10px 24px -12px rgba(229,17,28,.45);
   }
   .node-btn.done{background:var(--ok)}
   .node-btn.active{background:var(--brand)}
@@ -97,7 +97,7 @@
     {% endif %}
   </aside>
 
-  <section class="card" style="padding:22px 10px 10px;background:#fafbff">
+  <section class="card" style="padding:22px 10px 10px;background:#fafafa">
     {% set ns = namespace(i=0) %}
     {% for unit in course.units %}
       {% if unit.section_label %}<div class="section-break">{{ unit.section_label }}</div>{% endif %}
