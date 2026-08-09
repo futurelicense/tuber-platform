@@ -13,7 +13,9 @@
       <a href="#offers">What we offer</a>
       <a href="#results">Results</a>
       <a href="#how">How it works</a>
-      <a href="{{ url_for('academy.home') }}">Academy</a>
+      {% if academy_open %}
+      <a href="#academy">Academy</a>
+      {% endif %}
       <a href="#faq">FAQ</a>
     </nav>
     <a href="#offers" class="btn hp-header-cta">Get my free teardown</a>
@@ -146,7 +148,20 @@
   .hp-grid{display:grid;gap:22px}
   .hp-grid.cols-2{grid-template-columns:repeat(2,1fr)}
   .hp-grid.cols-3{grid-template-columns:repeat(3,1fr)}
+  .hp-grid.cols-4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:1100px){ .hp-grid.cols-4{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:900px){ .hp-grid.cols-2, .hp-grid.cols-3{grid-template-columns:1fr} }
+  @media (max-width:640px){ .hp-grid.cols-4{grid-template-columns:1fr} }
+
+  .hp-acad-course{display:flex;flex-direction:column;overflow:hidden;padding:0;min-height:100%}
+  .hp-acad-course .cover{aspect-ratio:16/10;background:linear-gradient(145deg,#1b1e26,#3a1520 45%,#7a1520);
+    background-size:cover;background-position:center}
+  .hp-acad-course .body{padding:16px 18px 18px;display:flex;flex-direction:column;flex:1}
+  .hp-acad-course .meta{font-size:11.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--brand);font-weight:700}
+  .hp-acad-course h3{margin:8px 0 0;font-size:17px;line-height:1.25}
+  .hp-acad-course p{margin:8px 0 0;font-size:13px;color:var(--muted);line-height:1.5;flex:1}
+  .hp-acad-course a.more{margin-top:14px;font-size:13px;font-weight:600;color:var(--text)}
+  .hp-acad-course a.more:hover{color:var(--brand);text-decoration:none}
 
   .hp-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     box-shadow:0 24px 60px -30px rgba(0,0,0,.85);transition:transform .3s ease,border-color .3s ease}
@@ -326,10 +341,14 @@
       <h1 class="reveal">Turn YouTube into <span class="accent">digital real estate</span>.</h1>
       <p class="lede reveal">MoneyTuber trains squads of clippers and producers to grow and monetize
         YouTube channels — for clients, and for you. Grow from scratch, scale what you already have,
-        or own a channel outright.</p>
+        own a channel outright{% if academy_open %}, or learn AI skills inside Academy{% endif %}.</p>
       <div class="hp-cta-row reveal">
         <a href="#offers" class="btn">Claim my free channel teardown</a>
+        {% if academy_open %}
+        <a href="#academy" class="btn quiet">Explore Academy</a>
+        {% else %}
         <a href="#results" class="btn quiet">See real results</a>
+        {% endif %}
       </div>
       <div class="hp-avatars reveal">
         <div class="stack">
@@ -373,6 +392,7 @@
     <span>Clipper squads</span><span class="dot">◆</span>
     <span>Monetization ops</span><span class="dot">◆</span>
     <span>Channel acquisitions</span><span class="dot">◆</span>
+    {% if academy_open %}<span>AI Academy</span><span class="dot">◆</span>{% endif %}
     <span>Thumbnail testing</span><span class="dot">◆</span>
     <span>Shorts engines</span><span class="dot">◆</span>
     {% endfor %}
@@ -519,7 +539,7 @@
     </div>
   </div>
 
-  <div class="hp-grid cols-3" style="margin-top:26px">
+  <div class="hp-grid {{ 'cols-4' if academy_open else 'cols-3' }}" style="margin-top:26px">
     <div class="hp-card hp-path-card reveal">
       <span class="k">Path 01</span>
       <h4>We build it. You rest.</h4>
@@ -541,6 +561,15 @@
         and posting engine we run internally.</p>
       <a href="#offers" class="btn quiet block" style="margin-top:18px">Join the MasterClass</a>
     </div>
+    {% if academy_open %}
+    <div class="hp-card hp-path-card reveal">
+      <span class="k">Path 04</span>
+      <h4>MoneyTuber Academy</h4>
+      <p>Learn AI tools, use cases and challenges built for creators — prompt drills, listen
+        lessons and courses you can sell as an affiliate.</p>
+      <a href="#academy" class="btn quiet block" style="margin-top:18px">See Academy courses</a>
+    </div>
+    {% endif %}
   </div>
 </section>
 
@@ -581,10 +610,16 @@
 <!-- OFFERS -->
 <section class="hp-section" id="offers">
   <div class="hp-offers-head reveal">
-    <p class="hp-eyebrow">Three ways in</p>
+    <p class="hp-eyebrow">{{ 'Four ways in' if academy_open else 'Three ways in' }}</p>
     <h2 class="hp-h2">Pick where you are today</h2>
-    <p class="hp-lede" style="margin-left:auto;margin-right:auto">Every path starts with one form
-      — name, email and your phone number. A human replies inside 24 hours.</p>
+    <p class="hp-lede" style="margin-left:auto;margin-right:auto">
+      {% if academy_open %}
+      Grow with us, buy a channel, join Master Class, or start Academy — channels and AI skills
+      under one MoneyTuber roof.
+      {% else %}
+      Every path starts with one form — name, email and your phone number. A human replies inside 24 hours.
+      {% endif %}
+    </p>
     <div class="hp-offers-badges">
       <span class="hp-slot-badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--brand);display:inline-block"></span> 7 teardown slots left</span>
       {% if whatsapp_number %}
@@ -596,7 +631,7 @@
     </div>
   </div>
 
-  <div class="hp-grid cols-3" style="margin-top:40px;align-items:stretch">
+  <div class="hp-grid {{ 'cols-2' if academy_open else 'cols-3' }}" style="margin-top:40px;align-items:stretch">
     <!-- Grow & Monetize -->
     <div class="hp-card hp-offer-card featured reveal">
       <span class="hp-offer-badge-top">Most requested</span>
@@ -698,8 +733,69 @@
       <p class="hp-offer-proof">Founding cohort pricing locked for waitlist only.</p>
       {% endif %}
     </div>
+
+    {% if academy_open %}
+    <!-- Academy -->
+    <div class="hp-card hp-offer-card reveal">
+      <span class="hp-offer-eyebrow">Track 04</span>
+      <h3>MoneyTuber Academy</h3>
+      <p class="pitch">Practical AI courses for creators and operators — tools, use cases and
+        challenges with read, listen, video and interactive lessons.</p>
+      <ul class="hp-offer-bullets">
+        <li>AI tool courses + real prompt drills</li>
+        <li>Direct entry{% if academy_price %} from {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}{% endif %}, or relate with admin</li>
+        <li>Affiliates earn on paid Academy enrollments</li>
+      </ul>
+      <a href="{{ url_for('academy.signup') }}" class="btn block hp-offer-open-link">Join Academy →</a>
+      <a href="{{ url_for('academy.courses') }}" class="hp-wa-link block" style="justify-content:center;margin-top:9px">
+        Browse courses first
+      </a>
+      <p class="hp-offer-proof">Learn inside the app — Home, Courses, Tools and Profile.</p>
+    </div>
+    {% endif %}
   </div>
 </section>
+
+{% if academy_open %}
+<!-- ACADEMY SHOWCASE -->
+<section class="hp-section" id="academy" style="border-top:1px solid var(--line);background:rgba(18,20,27,.25)">
+  <div style="display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px">
+    <div class="reveal" style="max-width:560px">
+      <p class="hp-eyebrow">Academy</p>
+      <h2 class="hp-h2">AI skills that pair with YouTube ops</h2>
+      <p class="hp-lede">Same MoneyTuber brand — courses you can take yourself or sell with your
+        affiliate link.</p>
+    </div>
+    <a href="{{ url_for('academy.home') }}" class="btn quiet reveal">Open Academy →</a>
+  </div>
+
+  {% if academy_courses %}
+  <div class="hp-grid cols-4" style="margin-top:36px">
+    {% for c in academy_courses %}
+    <article class="hp-card hp-acad-course reveal">
+      <div class="cover"{% if c.cover_image_url %} style="background-image:url('{{ c.cover_image_url }}')"{% endif %}></div>
+      <div class="body">
+        <span class="meta">{{ c.catalog.replace('_', ' ') }}{% if c.category %} · {{ c.category }}{% endif %}</span>
+        <h3>{{ c.title }}</h3>
+        {% if c.summary %}<p>{{ c.summary }}</p>{% endif %}
+        <a class="more" href="{{ url_for('academy.course_detail', slug=c.slug) }}">View course →</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="hp-card reveal" style="margin-top:36px;padding:28px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+    <div>
+      <h3 style="margin:0;font-size:20px">Courses are opening inside Academy</h3>
+      <p style="margin:8px 0 0;color:var(--muted);font-size:14px;max-width:480px">
+        Create your learner account to get Direct Entry or message admin for access.
+      </p>
+    </div>
+    <a href="{{ url_for('academy.signup') }}" class="btn">Get started →</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <!-- HOW -->
 <section class="hp-section" id="how" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(18,20,27,.25)">
@@ -730,7 +826,8 @@
       <div>
         <h2>Earn by sending us people.</h2>
         <p>Get your own referral link and earn a commission on every prospect who converts —
-          buying a channel, joining the Master Class, or growing with us.</p>
+          buying a channel, joining the Master Class, growing with us{% if academy_open %}, or
+          enrolling in Academy{% endif %}.</p>
       </div>
       <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate →</a>
     </div>
@@ -762,6 +859,15 @@
         <p>It depends on output volume and whether you're growing an existing channel or
           starting fresh. The teardown call ends with a flat number, no pressure.</p>
       </details>
+      {% if academy_open %}
+      <details class="hp-faq reveal">
+        <summary>What is MoneyTuber Academy?</summary>
+        <p>An in-app learning track for AI tools and creator workflows — separate from channel
+          ops and Master Class. Join via Direct Entry{% if academy_price %} (about
+          {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}){% endif %}
+          or relate with admin, then learn courses at your pace.</p>
+      </details>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -783,7 +889,16 @@
   </div>
 </section>
 
-<footer class="hp-foot">&copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.</footer>
+<footer class="hp-foot">
+  <div style="display:flex;flex-wrap:wrap;gap:14px 22px;justify-content:center;margin-bottom:12px;font-size:13px">
+    <a href="#offers" style="color:var(--muted)">Offers</a>
+    {% if marketplace_open %}<a href="{{ url_for('marketplace.browse') }}" style="color:var(--muted)">Marketplace</a>{% endif %}
+    {% if master_class_open %}<a href="{{ url_for('master_class.sales') }}" style="color:var(--muted)">Master Class</a>{% endif %}
+    {% if academy_open %}<a href="{{ url_for('academy.home') }}" style="color:var(--muted)">Academy</a>{% endif %}
+    <a href="{{ url_for('affiliate.signup') }}" style="color:var(--muted)">Affiliate</a>
+  </div>
+  &copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.
+</footer>
 <div class="hp-sticky-cta">
   <a href="#offers" class="btn block">Claim my free teardown · 7 left</a>
 </div>

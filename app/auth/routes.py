@@ -155,10 +155,42 @@ def home():
             db.session.rollback()
             master_class_open = False
 
+        academy_open = False
+        academy_price = None
+        academy_currency = "USD"
+        academy_courses = []
+        try:
+            from ..models import AcademySettings, AcademyCourse
+
+            academy_settings = AcademySettings.get()
+            academy_open = bool(academy_settings.is_open)
+            academy_price = academy_settings.price_amount
+            academy_currency = academy_settings.currency or "USD"
+            if academy_open:
+                academy_courses = (
+                    AcademyCourse.query.filter_by(status="published")
+                    .order_by(
+                        AcademyCourse.is_featured.desc(),
+                        AcademyCourse.sort_order.asc(),
+                        AcademyCourse.created_at.desc(),
+                    )
+                    .limit(4)
+                    .all()
+                )
+        except SQLAlchemyError:
+            logger.exception("Homepage: Academy query failed, defaulting closed")
+            db.session.rollback()
+            academy_open = False
+            academy_courses = []
+
         return render_template(
             "home.html",
             master_class_open=master_class_open,
             marketplace_open=marketplace_open,
+            academy_open=academy_open,
+            academy_price=academy_price,
+            academy_currency=academy_currency,
+            academy_courses=academy_courses,
             whatsapp_number=current_app.config.get("WHATSAPP_NUMBER", ""),
         )
     if current_user.role == "admin":

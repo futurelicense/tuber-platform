@@ -150,6 +150,19 @@ class AcademyTests(unittest.TestCase):
         course = AcademyCourse.query.filter_by(slug="chatgpt-deep-dive").first()
         self.assertIsNotNone(course)
 
+    def test_homepage_showcases_academy_when_open(self):
+        course, _lesson = self._seed_course()
+        course.is_featured = True
+        course.summary = "Learn Gemini fast"
+        db.session.commit()
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        self.assertIn("MoneyTuber Academy", body)
+        self.assertIn("id=\"academy\"", body)
+        self.assertIn(course.title, body)
+        self.assertIn("/academy/signup", body)
+
     def test_admin_rejects_invalid_category(self):
         self._login("admin@example.com")
         resp = self.client.post(
