@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card" style="max-width:560px">
   <h2>{{ 'Edit' if course else 'New' }} Academy course</h2>
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="title">Title</label>
     <input id="title" name="title" type="text" value="{{ course.title if course else '' }}" required autofocus>
@@ -48,9 +48,19 @@
       </div>
     </div>
 
-    <label for="cover_image_url">Cover image URL (optional)</label>
-    <input id="cover_image_url" name="cover_image_url" type="url"
-           value="{{ course.cover_image_url if course else '' }}">
+    <label for="cover_image">Cover image (optional)</label>
+    <input id="cover_image" name="cover_image" type="file" accept="image/png,image/jpeg,image/webp">
+    <div class="hint" style="margin-top:-8px">PNG, JPG, or WEBP — shown on Academy catalog cards.</div>
+    {% if course and course.cover_image_url %}
+    <div style="margin:0 0 14px;display:flex;gap:12px;align-items:center">
+      <img src="{{ course.cover_image_url }}" alt="Current cover"
+           style="width:120px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">
+      <label style="display:flex;align-items:center;gap:8px;margin:0">
+        <input type="checkbox" name="clear_cover" style="width:auto;margin:0">
+        Remove current cover
+      </label>
+    </div>
+    {% endif %}
 
     <label for="sort_order">Sort order</label>
     <input id="sort_order" name="sort_order" type="number"

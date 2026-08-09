@@ -787,10 +787,43 @@ def _course_form_fields():
         "tags": (request.form.get("tags") or "").strip(),
         "estimated_lessons": request.form.get("estimated_lessons", type=int),
         "estimated_hours": request.form.get("estimated_hours", type=float),
-        "cover_image_url": (request.form.get("cover_image_url") or "").strip(),
         "is_featured": request.form.get("is_featured") == "on",
         "sort_order": request.form.get("sort_order", type=int) or 0,
     }
+
+
+def _delete_stored_academy_cover(cover_url):
+    """Remove a previously uploaded Academy cover if we own the file."""
+    if not cover_url:
+        return
+    name = cover_url.rstrip("/").split("/")[-1]
+    if name.startswith("academy-") and ".." not in name and "/" not in name:
+        delete_image(name)
+
+
+def _resolve_course_cover_url(existing_url=None):
+    """Handle cover file upload / clear. Returns (url_or_existing, error_or_None).
+
+    - New file → save under LISTING_UPLOAD_DIR, return public marketplace upload URL
+    - clear_cover checked → delete prior upload, return None
+    - Neither → keep existing_url
+    """
+    clear = request.form.get("clear_cover") == "on"
+    upload = request.files.get("cover_image")
+    if upload and upload.filename:
+        try:
+            filename, _, _, _ = save_image(upload, prefix="academy")
+        except UploadRejected as e:
+            return existing_url, str(e)
+        new_url = url_for("marketplace.uploaded_file", filename=filename)
+        if existing_url and existing_url != new_url:
+            _delete_stored_academy_cover(existing_url)
+        return new_url, None
+    if clear:
+        _delete_stored_academy_cover(existing_url)
+        return None, None
+    return existing_url, None
+
 
 
 @bp.route("/academy/courses")
@@ -838,6 +871,14 @@ def academy_new_course():
                 course=None,
                 catalogs=COURSE_CATALOGS,
             )
+        cover_url, cover_err = _resolve_course_cover_url()
+        if cover_err:
+            flash(cover_err, "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=None,
+                catalogs=COURSE_CATALOGS,
+            )
         course = AcademyCourse(
             title=fields["title"],
             slug=_unique_course_slug(fields["title"]),
@@ -848,7 +889,7 @@ def academy_new_course():
             tags=fields["tags"] or None,
             estimated_lessons=fields["estimated_lessons"],
             estimated_hours=fields["estimated_hours"],
-            cover_image_url=fields["cover_image_url"] or None,
+            cover_image_url=cover_url,
             is_featured=fields["is_featured"],
             sort_order=fields["sort_order"],
             status="draft",
@@ -892,6 +933,14 @@ def academy_edit_course(course_id):
                 course=course,
                 catalogs=COURSE_CATALOGS,
             )
+        cover_url, cover_err = _resolve_course_cover_url(course.cover_image_url)
+        if cover_err:
+            flash(cover_err, "error")
+            return render_template(
+                "admin/academy_course_form.html",
+                course=course,
+                catalogs=COURSE_CATALOGS,
+            )
         if course.title != fields["title"]:
             course.slug = _unique_course_slug(fields["title"], exclude_id=course.id)
         course.title = fields["title"]
@@ -902,7 +951,7 @@ def academy_edit_course(course_id):
         course.tags = fields["tags"] or None
         course.estimated_lessons = fields["estimated_lessons"]
         course.estimated_hours = fields["estimated_hours"]
-        course.cover_image_url = fields["cover_image_url"] or None
+        course.cover_image_url = cover_url
         course.is_featured = fields["is_featured"]
         course.sort_order = fields["sort_order"]
         db.session.commit()
