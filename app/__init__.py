@@ -57,6 +57,21 @@ def create_app(config_class=Config):
 
         return {"academy_cover_url": resolve_course_cover_url}
 
+    @app.context_processor
+    def inject_academy_unread():
+        from flask_login import current_user
+
+        unread = 0
+        try:
+            if current_user.is_authenticated and getattr(current_user, "role", None) == "learner":
+                from .academy import services as academy_services
+
+                if academy_services.user_has_message_access(current_user):
+                    unread = academy_services.unread_from_admin(current_user.id)
+        except Exception:
+            unread = 0
+        return {"academy_unread_admin": unread}
+
     @app.route("/healthz")
     def healthz():
         return {"status": "ok"}

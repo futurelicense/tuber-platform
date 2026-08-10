@@ -223,7 +223,20 @@
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.7 3.2-.4 5.3-2.2 7.1C7.8 11.1 7 13 7.4 15.3c.5 2.6 2.7 4.4 4.6 4.7-2.8-.9-4.5-3.6-4-6.4.2-1.1.8-2.1 1.6-3C11.4 8.5 12.7 6.4 12 2zm2.7 6.4c1.4 1.6 2.3 3.4 2 5.4-.4 2.8-2.6 4.7-5.1 5.3 2.7-.1 5.3-1.9 6.1-4.7.7-2.5-.2-4.7-1.8-6.4-.4-.4-.8-.8-1.2-1.1z"/></svg>
         0
       </span>
-      <a class="profile-link {{ 'active' if request.endpoint in ('academy.profile','academy.messages') }}" href="{{ url_for('academy.profile') }}">
+      <a class="profile-link {{ 'active' if request.endpoint and request.endpoint.startswith('academy.messages') }}"
+         href="{{ url_for('academy.messages') }}" style="position:relative">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>
+        </svg>
+        Chat
+        {% if academy_unread_admin %}
+        <span style="position:absolute;top:-4px;right:-8px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;
+                     background:var(--brand);color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center">
+          {{ academy_unread_admin }}
+        </span>
+        {% endif %}
+      </a>
+      <a class="profile-link {{ 'active' if request.endpoint == 'academy.profile' }}" href="{{ url_for('academy.profile') }}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.2-5 8-5s6.5 1.5 8 5"/></svg>
         Profile
       </a>

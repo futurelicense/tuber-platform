@@ -310,9 +310,80 @@ def courses():
 
 
 @bp.route("/tools")
+@login_required
 def tools():
     _gate_open()
-    return render_template("academy/tools.html")
+    from .ai import ai_configured, ai_model_label
+
+    can_use = services.user_has_course_access()
+    ai_ready = ai_configured()
+    return render_template(
+        "academy/tools.html",
+        can_use=can_use,
+        ai_ready=ai_ready,
+        model_label=ai_model_label() if ai_ready else "Groq · not configured",
+    )
+
+
+@bp.route("/tools/chat", methods=["POST"])
+@login_required
+def tools_chat():
+    """Groq-backed chat for Academy AI Tools (JSON)."""
+    _gate_open()
+    from flask import jsonify
+    from .ai import (
+        AIConfigError,
+        AIRequestError,
+        TOOL_MODES,
+        build_messages,
+        chat_completion,
+        ai_configured,
+    )
+
+    if not services.user_has_course_access():
+        return jsonify(error="Course access required for AI Tools."), 403
+    if not ai_configured():
+        return jsonify(error="AI_KEY is not configured on this server."), 503
+
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    mode = (data.get("mode") or "chat").strip().lower()
+    history = data.get("history") if isinstance(data.get("history"), list) else []
+
+    if not message:
+        return jsonify(error="Type a message first."), 400
+    if mode not in TOOL_MODES:
+        mode = "chat"
+    if len(message) > 8000:
+        return jsonify(error="Message is too long (max 8,000 characters)."), 400
+
+    # Light per-user throttle (process-local; enough to blunt spam on one worker).
+    import time
+    from collections import defaultdict, deque
+
+    if not hasattr(tools_chat, "_hits"):
+        tools_chat._hits = defaultdict(deque)
+    hits = tools_chat._hits[current_user.id]
+    now = time.monotonic()
+    while hits and now - hits[0] > 60:
+        hits.popleft()
+    if len(hits) >= 20:
+        return jsonify(error="Too many requests — wait a minute and try again."), 429
+    hits.append(now)
+
+    messages = build_messages(mode, message, history)
+    try:
+        reply = chat_completion(messages, max_tokens=900, temperature=0.5)
+    except AIConfigError as e:
+        return jsonify(error=str(e)), 503
+    except AIRequestError as e:
+        logger.warning("Academy tools AI error for user %s: %s", current_user.id, e)
+        return jsonify(error="The AI provider is busy or unavailable. Try again shortly."), 502
+    except Exception:
+        logger.exception("Academy tools unexpected AI failure")
+        return jsonify(error="Unexpected AI error. Try again."), 500
+
+    return jsonify(reply=reply, mode=mode)
 
 
 @bp.route("/games")
@@ -418,13 +489,47 @@ def messages():
         return redirect(url_for("academy.messages"))
 
     thread = services.thread_for_learner(current_user.id)
+    services.mark_messages_read(current_user.id, "learner")
     return render_template(
         "academy/messages.html",
         thread=thread,
         subscription=sub,
         can_learn=services.user_has_course_access(),
         settings=AcademySettings.get(),
+        poll_url=url_for("academy.messages_updates"),
+        send_url=url_for("academy.messages_send"),
+        me_role="learner",
     )
+
+
+@bp.route("/messages/updates")
+@login_required
+def messages_updates():
+    _gate_open()
+    if current_user.role != "learner" or not services.user_has_message_access():
+        abort(403)
+    after_id = request.args.get("after_id", 0, type=int) or 0
+    rows = services.messages_after(current_user.id, after_id)
+    if rows:
+        services.mark_messages_read(current_user.id, "learner")
+    return {
+        "messages": [services.serialize_message(m) for m in rows],
+        "unread": services.unread_from_admin(current_user.id),
+    }
+
+
+@bp.route("/messages/send", methods=["POST"])
+@login_required
+def messages_send():
+    _gate_open()
+    if current_user.role != "learner" or not services.user_has_message_access():
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    body = data.get("body") if data else request.form.get("body")
+    msg = services.post_message(current_user.id, current_user, body or "")
+    if not msg:
+        return {"error": "Write a message first."}, 400
+    return {"message": services.serialize_message(msg)}
 
 
 @bp.route("/profile")

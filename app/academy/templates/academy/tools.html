@@ -8,53 +8,199 @@
   .tools-side .new{
     display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
     border:1px solid var(--line);border-radius:14px;padding:12px;font-weight:750;background:#fff;color:var(--text);
+    cursor:pointer;
   }
-  .composer-wrap{display:grid;place-items:center;padding:40px 16px;position:relative}
+  .tools-side .new:hover{border-color:var(--brand);color:var(--brand)}
+  .tool-mode{
+    display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:12px;color:var(--text);
+    text-decoration:none;font-size:14px;font-weight:600;cursor:pointer;border:0;background:transparent;width:100%;text-align:left;
+  }
+  .tool-mode:hover,.tool-mode.is-on{background:var(--brand-soft);color:var(--brand);text-decoration:none}
+  .composer-wrap{display:flex;flex-direction:column;min-height:70vh;padding:18px 16px 16px;position:relative}
   .composer-wrap::before{
-    content:"";position:absolute;width:min(520px,90%);height:220px;border-radius:50%;
-    background:radial-gradient(circle,var(--brand-glow),transparent 70%);filter:blur(8px);
+    content:"";position:absolute;left:50%;top:18%;transform:translateX(-50%);width:min(520px,90%);height:220px;border-radius:50%;
+    background:radial-gradient(circle,var(--brand-glow),transparent 70%);filter:blur(8px);pointer-events:none;
   }
+  .chat-log{position:relative;flex:1;overflow:auto;max-height:52vh;padding:8px 4px 18px;display:flex;flex-direction:column;gap:12px}
+  .chat-log:empty{display:none}
+  .bubble{max-width:92%;padding:12px 14px;border-radius:16px;font-size:14.5px;line-height:1.55;white-space:pre-wrap}
+  .bubble.user{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:6px}
+  .bubble.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px;color:var(--text)}
+  .bubble.err{align-self:flex-start;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+  .hero-ask{position:relative;text-align:center;margin:auto 0 18px}
+  .hero-ask.is-hidden{display:none}
   .composer{
-    position:relative;width:min(680px,100%);background:#fff;border:1px solid var(--line);
-    border-radius:22px;padding:16px;box-shadow:0 18px 50px -28px rgba(229,17,28,.35);
+    position:relative;width:min(720px,100%);margin:0 auto;background:#fff;border:1px solid var(--line);
+    border-radius:22px;padding:14px;box-shadow:0 18px 50px -28px rgba(229,17,28,.35);
   }
-  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
-  .chips span{
+  .composer textarea{margin:0;border:none;resize:vertical;box-shadow:none;min-height:72px;width:100%}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+  .chips button{
     padding:9px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);
-    font-size:12.5px;font-weight:650;color:var(--text);
+    font-size:12.5px;font-weight:650;color:var(--text);cursor:pointer;
   }
+  .chips button:hover,.chips button.is-on{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+  .chips button:disabled{opacity:.45;cursor:not-allowed}
+  .send-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px}
+  .send-row .btn[disabled]{opacity:.55;cursor:wait}
 </style>
 {% endblock %}
 {% block content %}
 <div class="tools-layout">
   <aside class="card tools-side">
-    <button class="new" type="button">＋ New Chat</button>
-    <div style="margin-top:18px" class="meta">Tools</div>
-    <a class="list-row" href="#" style="margin-top:8px"><span>🔎</span><div>Search</div></a>
-    <a class="list-row" href="#"><span>🖼️</span><div>Create image</div></a>
-    <a class="list-row" href="#"><span>📊</span><div>Analyze data</div></a>
-    <div style="margin-top:18px" class="meta">History</div>
-    <p class="meta" style="padding:8px 4px">Chats will appear here once AI Tools go live.</p>
+    <button class="new" type="button" id="new-chat">＋ New Chat</button>
+    <div style="margin-top:18px" class="meta">Modes</div>
+    <button type="button" class="tool-mode is-on" data-mode="chat">💬 Chat</button>
+    <button type="button" class="tool-mode" data-mode="advice">🧭 Give advice</button>
+    <button type="button" class="tool-mode" data-mode="ideas">💡 Generate ideas</button>
+    <button type="button" class="tool-mode" data-mode="summarize">📝 Summarize text</button>
+    <button type="button" class="tool-mode" data-mode="translate">🌐 Translate</button>
+    <div style="margin-top:18px" class="meta">Coming soon</div>
+    <div class="list-row" style="opacity:.55"><span>🖼️</span><div>Create image</div></div>
+    <div class="list-row" style="opacity:.55"><span>📊</span><div>Analyze data</div></div>
+    <p class="meta" style="padding:10px 4px 0">Powered by Groq. Session history stays in this browser.</p>
   </aside>
+
   <section class="card composer-wrap">
-    <div style="position:relative;width:min(680px,100%);text-align:center">
-      <h1 style="font-size:34px;margin:0 0 18px">What can I help with?</h1>
-      <div class="composer">
-        <textarea rows="3" placeholder="Ask anything." style="margin:0;border:none;resize:vertical;box-shadow:none"></textarea>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">
-          <button class="btn ghost" type="button" style="padding:8px 10px">＋</button>
-          <div class="meta">Claude Sonnet · coming soon</div>
-        </div>
-      </div>
-      <div class="chips">
-        <span>Create an image</span>
-        <span>Give advice</span>
-        <span>Generate ideas</span>
-        <span>Summarize text</span>
-        <span>Analyze this data</span>
-        <span>Translate this</span>
+    {% if not can_use %}
+    <div style="position:relative;max-width:520px;margin:auto;text-align:center;padding:40px 12px">
+      <h1 style="font-size:28px;margin:0 0 10px">Unlock AI Tools</h1>
+      <p class="lede">Direct Entry access is required to run Groq-powered tools.</p>
+      <a class="btn" style="margin-top:14px" href="{{ url_for('academy.profile') }}">Get access →</a>
+    </div>
+    {% elif not ai_ready %}
+    <div style="position:relative;max-width:520px;margin:auto;text-align:center;padding:40px 12px">
+      <h1 style="font-size:28px;margin:0 0 10px">AI provider not configured</h1>
+      <p class="lede">Set <code>AI_KEY</code> (Groq) on the server to enable Academy AI Tools.</p>
+    </div>
+    {% else %}
+    <div class="hero-ask" id="hero-ask">
+      <h1 style="font-size:34px;margin:0">What can I help with?</h1>
+    </div>
+    <div class="chat-log" id="chat-log" aria-live="polite"></div>
+    <div class="composer">
+      <textarea id="prompt" rows="3" placeholder="Ask anything — scripts, hooks, offers, translations…"></textarea>
+      <div class="send-row">
+        <div class="meta" id="model-label">{{ model_label }}</div>
+        <button class="btn" type="button" id="send-btn">Send</button>
       </div>
     </div>
+    <div class="chips" id="chips">
+      <button type="button" data-mode="advice" data-prefill="I need advice on growing a faceless YouTube channel with Shorts.">Give advice</button>
+      <button type="button" data-mode="ideas" data-prefill="Generate Shorts ideas for a personal-finance faceless channel.">Generate ideas</button>
+      <button type="button" data-mode="summarize" data-prefill="">Summarize text</button>
+      <button type="button" data-mode="translate" data-prefill="">Translate this</button>
+      <button type="button" disabled title="Coming soon">Create an image</button>
+      <button type="button" disabled title="Coming soon">Analyze this data</button>
+    </div>
+    {% endif %}
   </section>
 </div>
+
+{% if can_use and ai_ready %}
+<script>
+(function () {
+  const chatUrl = {{ url_for('academy.tools_chat') | tojson }};
+  const csrf = {{ csrf_token() | tojson }};
+  const log = document.getElementById('chat-log');
+  const hero = document.getElementById('hero-ask');
+  const prompt = document.getElementById('prompt');
+  const sendBtn = document.getElementById('send-btn');
+  const modeBtns = document.querySelectorAll('.tool-mode');
+  const chips = document.getElementById('chips');
+  let mode = 'chat';
+  let history = [];
+  let busy = false;
+
+  function setMode(next) {
+    mode = next || 'chat';
+    modeBtns.forEach(function (b) {
+      b.classList.toggle('is-on', b.getAttribute('data-mode') === mode);
+    });
+    chips.querySelectorAll('button[data-mode]').forEach(function (b) {
+      b.classList.toggle('is-on', b.getAttribute('data-mode') === mode);
+    });
+  }
+
+  function addBubble(role, text) {
+    hero.classList.add('is-hidden');
+    log.style.display = 'flex';
+    const el = document.createElement('div');
+    el.className = 'bubble ' + (role === 'user' ? 'user' : role === 'err' ? 'err' : 'ai');
+    el.textContent = text;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function resetChat() {
+    history = [];
+    log.innerHTML = '';
+    log.style.display = 'none';
+    hero.classList.remove('is-hidden');
+    prompt.value = '';
+    prompt.focus();
+  }
+
+  async function send() {
+    if (busy) return;
+    const text = (prompt.value || '').trim();
+    if (!text) {
+      prompt.focus();
+      return;
+    }
+    busy = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Thinking…';
+    addBubble('user', text);
+    prompt.value = '';
+    try {
+      const resp = await fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf,
+        },
+        body: JSON.stringify({ message: text, mode: mode, history: history }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (!resp.ok) {
+        addBubble('err', data.error || 'Something went wrong. Try again.');
+      } else {
+        addBubble('ai', data.reply);
+        history.push({ role: 'user', content: text });
+        history.push({ role: 'assistant', content: data.reply });
+        if (history.length > 16) history = history.slice(-16);
+      }
+    } catch (e) {
+      addBubble('err', 'Network error — check your connection and try again.');
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send';
+      prompt.focus();
+    }
+  }
+
+  document.getElementById('new-chat').addEventListener('click', resetChat);
+  sendBtn.addEventListener('click', send);
+  prompt.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+  modeBtns.forEach(function (b) {
+    b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
+  });
+  chips.addEventListener('click', function (e) {
+    const btn = e.target.closest('button[data-mode]');
+    if (!btn || btn.disabled) return;
+    setMode(btn.getAttribute('data-mode'));
+    const pre = btn.getAttribute('data-prefill') || '';
+    if (pre) prompt.value = pre;
+    prompt.focus();
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

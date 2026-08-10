@@ -209,6 +209,8 @@ def post_message(learner_id, sender, body):
     body = (body or "").strip()
     if not body:
         return None
+    if len(body) > 4000:
+        body = body[:4000]
     role = "admin" if sender.role == "admin" else "learner"
     msg = AcademyMessage(
         learner_id=learner_id,
@@ -226,6 +228,55 @@ def thread_for_learner(learner_id):
         AcademyMessage.query.filter_by(learner_id=learner_id)
         .order_by(AcademyMessage.created_at.asc())
         .all()
+    )
+
+
+def messages_after(learner_id, after_id=0):
+    q = AcademyMessage.query.filter_by(learner_id=learner_id)
+    if after_id:
+        q = q.filter(AcademyMessage.id > int(after_id))
+    return q.order_by(AcademyMessage.id.asc()).limit(100).all()
+
+
+def serialize_message(msg):
+    created = msg.created_at
+    return {
+        "id": msg.id,
+        "sender_role": msg.sender_role,
+        "body": msg.body,
+        "created_at": created.isoformat() if created else None,
+        "created_label": created.strftime("%b %d %H:%M") if created else "",
+    }
+
+
+def mark_messages_read(learner_id, viewer_role):
+    """Mark the other party's unread messages as read for this thread."""
+    other = "admin" if viewer_role == "learner" else "learner"
+    now = datetime.now(timezone.utc)
+    (
+        AcademyMessage.query.filter_by(learner_id=learner_id, sender_role=other)
+        .filter(AcademyMessage.read_at.is_(None))
+        .update({"read_at": now}, synchronize_session=False)
+    )
+    db.session.commit()
+
+
+def unread_from_learners(learner_id=None):
+    """Unread learner→admin messages (for admin badges)."""
+    q = AcademyMessage.query.filter_by(sender_role="learner").filter(
+        AcademyMessage.read_at.is_(None)
+    )
+    if learner_id is not None:
+        q = q.filter_by(learner_id=learner_id)
+    return q.count()
+
+
+def unread_from_admin(learner_id):
+    """Unread admin→learner messages for one learner."""
+    return (
+        AcademyMessage.query.filter_by(learner_id=learner_id, sender_role="admin")
+        .filter(AcademyMessage.read_at.is_(None))
+        .count()
     )
 
 

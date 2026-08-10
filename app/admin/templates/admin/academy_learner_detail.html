@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ learner.email }} — Academy learner{% endblock %}
 {% block content %}
+<style>
+  .admin-thread{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;max-height:min(55vh,480px);overflow-y:auto}
+  .admin-thread .bubble{max-width:90%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);white-space:pre-wrap;font-size:14px;line-height:1.45}
+  .admin-thread .bubble.me{align-self:flex-end;background:rgba(229,17,28,.12)}
+  .admin-thread .bubble.them{align-self:flex-start;background:rgba(2,3,8,.35)}
+  .admin-thread .bubble .when{display:block;margin-top:6px;font-size:11px;color:var(--muted);font-weight:700}
+  .admin-thread .bubble.is-new{animation:bubbleIn .25s ease-out}
+  @keyframes bubbleIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .live-status{font-size:12px;color:var(--muted);margin:0 0 10px;min-height:1.2em}
+  .live-status.is-error{color:#f87171}
+</style>
 <div class="card" style="margin-bottom:18px">
   <p class="hint" style="margin:0"><a href="{{ url_for('admin.academy_learners') }}">← Learners</a></p>
   <h2 style="margin:8px 0 0">{{ learner.display_name or learner.email }}</h2>
@@ -22,25 +33,33 @@
 </div>
 
 <div class="card">
-  <h2>Messages</h2>
-  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;max-height:420px;overflow-y:auto">
+  <h2 style="margin-bottom:4px">Live messages</h2>
+  <p class="live-status" id="live-status">Connecting…</p>
+  <div class="admin-thread thread" id="live-thread">
     {% for m in thread %}
-    <div style="padding:10px 12px;border:1px solid var(--line);border-radius:10px;
-         background:{{ 'rgba(229,17,28,.08)' if m.sender_role == 'admin' else 'rgba(2,3,8,.35)' }}">
-      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">
-        {{ m.sender_role }} · {{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}
-      </div>
-      <div style="white-space:pre-wrap">{{ m.body }}</div>
+    <div class="bubble {{ 'me' if m.sender_role == 'admin' else 'them' }}" data-msg-id="{{ m.id }}">
+      {{ m.body }}
+      <span class="when">{{ m.sender_role }} · {{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}</span>
     </div>
     {% else %}
-    <p class="hint" style="margin:0">No messages yet.</p>
+    <p class="hint" id="live-empty" style="margin:0">No messages yet.</p>
     {% endfor %}
   </div>
-  <form method="post">
+  <form id="live-form" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label for="body">Reply</label>
-    <textarea id="body" name="body" rows="3" required></textarea>
+    <label for="live-body">Reply</label>
+    <textarea id="live-body" name="body" rows="3" required placeholder="Type a reply — learner sees it within a few seconds…"></textarea>
     <button type="submit">Send reply</button>
   </form>
 </div>
+<script>
+  window.AcademyLiveChat = {
+    pollUrl: {{ poll_url | tojson }},
+    sendUrl: {{ send_url | tojson }},
+    csrf: {{ csrf_token() | tojson }},
+    meRole: "admin",
+    afterId: {{ (thread[-1].id if thread else 0) | tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='academy/live-chat.js') }}" defer></script>
 {% endblock %}

@@ -56,6 +56,7 @@ class AcademyTests(unittest.TestCase):
         self.ctx.pop()
 
     def _login(self, email, password="password123"):
+        self.client.get("/logout")
         return self.client.post("/login", data={"email": email, "password": password})
 
     def _seed_course(self):
@@ -228,6 +229,95 @@ class AcademyTests(unittest.TestCase):
         self.assertEqual(lesson.interactive_template, "A [subject] in [setting]")
         self.assertIn("<b>prompt</b>", lesson.content)
         self.assertNotIn("<script>", lesson.content)
+
+
+    def test_live_messaging_poll_and_send(self):
+        # Relate path creates a learner with message access
+        self.client.post(
+            "/academy/signup",
+            data={
+                "email": "chatter@example.com",
+                "password": "password123",
+                "display_name": "Chatter",
+                "whatsapp": "+2348099999999",
+                "ai_knowledge": "4",
+                "entry_path": "relate_admin",
+            },
+        )
+        learner = User.query.filter_by(email="chatter@example.com").first()
+        self.assertIsNotNone(learner)
+
+        # Learner sends via JSON
+        resp = self.client.post(
+            "/academy/messages/send",
+            json={"body": "Hi admin, need access"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertIn("message", payload)
+        msg_id = payload["message"]["id"]
+
+        # Admin polls and sees it
+        self._login("admin@example.com")
+        resp = self.client.get(
+            f"/admin/academy/learners/{learner.id}/messages/updates?after_id=0"
+        )
+        self.assertEqual(resp.status_code, 200)
+        msgs = resp.get_json()["messages"]
+        self.assertTrue(any(m["id"] == msg_id for m in msgs))
+
+        # Admin replies
+        resp = self.client.post(
+            f"/admin/academy/learners/{learner.id}/messages/send",
+            json={"body": "Granted — welcome!"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        admin_msg_id = resp.get_json()["message"]["id"]
+
+        # Learner polls for admin reply
+        self._login("chatter@example.com", "password123")
+        resp = self.client.get(f"/academy/messages/updates?after_id={msg_id}")
+        self.assertEqual(resp.status_code, 200)
+        ids = [m["id"] for m in resp.get_json()["messages"]]
+        self.assertIn(admin_msg_id, ids)
+
+    def test_tools_chat_requires_access(self):
+        self.client.post(
+            "/academy/signup",
+            data={
+                "email": "lead2@example.com",
+                "password": "password123",
+                "display_name": "Lead2",
+                "whatsapp": "+2348012345679",
+                "ai_knowledge": "3",
+                "entry_path": "relate_admin",
+            },
+        )
+        resp = self.client.post(
+            "/academy/tools/chat",
+            json={"message": "hello", "mode": "chat"},
+            headers={"X-CSRFToken": "not-needed-when-disabled"},
+        )
+        # CSRF disabled in tests; relate_only has no course access
+        self.assertEqual(resp.status_code, 403)
+
+    def test_tools_chat_uses_groq_helper(self):
+        from unittest.mock import patch
+
+        admin = User.query.filter_by(email="admin@example.com").first()
+        # Admin has course access
+        self._login("admin@example.com")
+        with patch.dict("os.environ", {"AI_KEY": "test-key"}, clear=False):
+            with patch("app.academy.ai.chat_completion", return_value="Hook idea: …") as mock_chat:
+                resp = self.client.post(
+                    "/academy/tools/chat",
+                    json={"message": "Give me a Shorts hook", "mode": "ideas"},
+                )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["reply"], "Hook idea: …")
+        mock_chat.assert_called_once()
+        # unused but keeps import lint quiet in some setups
+        self.assertIsNotNone(admin)
 
 
 if __name__ == "__main__":

@@ -1191,11 +1191,20 @@ def academy_delete_lesson(lesson_id):
 @bp.route("/academy/learners")
 def academy_learners():
     from ..models import AcademySubscription
+    from ..academy import services as academy_services
 
     subs = (
         AcademySubscription.query.order_by(AcademySubscription.started_at.desc()).all()
     )
-    return render_template("admin/academy_learners.html", subscriptions=subs)
+    unread_by_user = {
+        s.user_id: academy_services.unread_from_learners(s.user_id) for s in subs
+    }
+    return render_template(
+        "admin/academy_learners.html",
+        subscriptions=subs,
+        unread_by_user=unread_by_user,
+        total_unread=academy_services.unread_from_learners(),
+    )
 
 
 @bp.route("/academy/learners/<int:user_id>", methods=["GET", "POST"])
@@ -1213,12 +1222,44 @@ def academy_learner_detail(user_id):
             flash("Write a message first.", "error")
         return redirect(url_for("admin.academy_learner_detail", user_id=learner.id))
     thread = academy_services.thread_for_learner(learner.id)
+    academy_services.mark_messages_read(learner.id, "admin")
     return render_template(
         "admin/academy_learner_detail.html",
         learner=learner,
         subscription=sub,
         thread=thread,
+        poll_url=url_for("admin.academy_learner_messages_updates", user_id=learner.id),
+        send_url=url_for("admin.academy_learner_messages_send", user_id=learner.id),
+        me_role="admin",
     )
+
+
+@bp.route("/academy/learners/<int:user_id>/messages/updates")
+def academy_learner_messages_updates(user_id):
+    from ..academy import services as academy_services
+
+    learner = User.query.filter_by(id=user_id, role="learner").first_or_404()
+    after_id = request.args.get("after_id", 0, type=int) or 0
+    rows = academy_services.messages_after(learner.id, after_id)
+    if rows:
+        academy_services.mark_messages_read(learner.id, "admin")
+    return {
+        "messages": [academy_services.serialize_message(m) for m in rows],
+        "unread": academy_services.unread_from_learners(learner.id),
+    }
+
+
+@bp.route("/academy/learners/<int:user_id>/messages/send", methods=["POST"])
+def academy_learner_messages_send(user_id):
+    from ..academy import services as academy_services
+
+    learner = User.query.filter_by(id=user_id, role="learner").first_or_404()
+    data = request.get_json(silent=True) or {}
+    body = data.get("body") if data else request.form.get("body")
+    msg = academy_services.post_message(learner.id, current_user, body or "")
+    if not msg:
+        return {"error": "Write a message first."}, 400
+    return {"message": academy_services.serialize_message(msg)}
 
 
 @bp.route("/academy/learners/<int:user_id>/grant-access", methods=["POST"])

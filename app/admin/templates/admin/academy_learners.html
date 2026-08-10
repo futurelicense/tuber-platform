@@ -2,8 +2,8 @@
 {% block title %}Academy learners — MoneyTuber{% endblock %}
 {% block content %}
 <div class="card">
-  <h2>Academy learners</h2>
-  <p class="hint">Direct Entry payers and Relate-with-Admin leads. Open a learner to message or grant course access.</p>
+  <h2>Academy learners{% if total_unread %} <span class="pill ok">{{ total_unread }} unread</span>{% endif %}</h2>
+  <p class="hint">Direct Entry payers and Relate-with-Admin leads. Open a thread for live chat, or grant course access.</p>
   <table>
     <tr>
       <th>Learner</th>
@@ -11,6 +11,7 @@
       <th>AI knowledge</th>
       <th>Path</th>
       <th>Status</th>
+      <th>Chat</th>
       <th>Affiliate</th>
       <th></th>
     </tr>
@@ -25,14 +26,22 @@
       <td>{{ s.entry_path.replace('_', ' ') }}</td>
       <td><span class="pill {{ 'ok' if s.status == 'active' else 'off' }}">{{ s.status }}</span></td>
       <td>
+        {% set u = unread_by_user.get(s.user_id, 0) %}
+        {% if u %}
+        <span class="pill ok">{{ u }} new</span>
+        {% else %}
+        <span class="hint" style="margin:0">—</span>
+        {% endif %}
+      </td>
+      <td>
         {% if s.affiliate %}
         {{ s.affiliate.display_name or s.affiliate.email }}
         {% else %}—{% endif %}
       </td>
-      <td><a href="{{ url_for('admin.academy_learner_detail', user_id=s.user_id) }}">Open →</a></td>
+      <td><a href="{{ url_for('admin.academy_learner_detail', user_id=s.user_id) }}">Open chat →</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="7" style="color:var(--faint)">No Academy learners yet.</td></tr>
+    <tr><td colspan="8" style="color:var(--faint)">No Academy learners yet.</td></tr>
     {% endfor %}
   </table>
 </div>
