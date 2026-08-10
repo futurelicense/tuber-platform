@@ -52,14 +52,18 @@
     <label for="cover_image">Cover image (optional)</label>
     <input id="cover_image" name="cover_image" type="file" accept="image/png,image/jpeg,image/webp">
     <div class="hint" style="margin-top:-8px">PNG, JPG, or WEBP — shown on Academy catalog cards.</div>
-    {% if course and course.cover_image_url %}
+    {% if course %}
     <div style="margin:0 0 14px;display:flex;gap:12px;align-items:center">
-      <img src="{{ course.cover_image_url }}" alt="Current cover"
+      <img src="{{ academy_cover_url(course) }}" alt="Current cover"
            style="width:120px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">
+      {% if course.cover_image_url and '/marketplace/uploads/' in course.cover_image_url %}
       <label style="display:flex;align-items:center;gap:8px;margin:0">
         <input type="checkbox" name="clear_cover" style="width:auto;margin:0">
-        Remove current cover
+        Remove uploaded cover
       </label>
+      {% else %}
+      <span class="hint" style="margin:0">Showing durable cover (upload a file to replace).</span>
+      {% endif %}
     </div>
     {% endif %}
 

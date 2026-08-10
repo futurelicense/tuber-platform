@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="AI tool course">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b1e26"/>
+      <stop offset="45%" stop-color="#3a1520"/>
+      <stop offset="100%" stop-color="#e5111c"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#g)"/>
+  <circle cx="620" cy="120" r="90" fill="#ff5b63" opacity=".22"/>
+  <circle cx="160" cy="380" r="120" fill="#ffffff" opacity=".06"/>
+  <rect x="86" y="150" width="280" height="36" rx="10" fill="#fff" opacity=".9"/>
+  <rect x="86" y="206" width="200" height="22" rx="8" fill="#fff" opacity=".45"/>
+  <rect x="86" y="248" width="240" height="22" rx="8" fill="#fff" opacity=".28"/>
+  <text x="86" y="360" fill="#fff" font-family="system-ui,sans-serif" font-size="28" font-weight="700" opacity=".9">AI Tools</text>
+</svg>

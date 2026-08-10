@@ -54,10 +54,10 @@
   <section class="card" style="padding:18px">
     {% if continue_course %}
     <div style="display:grid;grid-template-columns:108px 1fr;gap:14px;align-items:center">
-      <div class="course-cover {% if continue_course.cover_image_url %}has-img{% endif %}"
+      <div class="course-cover has-img"
            data-initials="{{ continue_course.title[:2]|upper }}"
            style="height:108px;border-radius:14px">
-        {% if continue_course.cover_image_url %}<img src="{{ continue_course.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(continue_course) }}" alt="">
       </div>
       <div>
         <div class="eyebrow">Continue learning</div>
@@ -133,9 +133,9 @@
   <div class="grid cols-5">
     {% for c in tools %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+      <div class="course-cover has-img" data-initials="{{ c.title[:2]|upper }}"
            style="background:linear-gradient(145deg,{% if loop.index0 % 4 == 0 %}#3a1520,#e5111c{% elif loop.index0 % 4 == 1 %}#7a1520,#ff5b63{% elif loop.index0 % 4 == 2 %}#1b1e26,#e5111c{% else %}#3a1520,#ff5b63{% endif %})">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>
@@ -160,9 +160,9 @@
   <div class="grid cols-5">
     {% for c in use_cases %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="AI"
+      <div class="course-cover has-img" data-initials="AI"
            style="background:linear-gradient(145deg,#1b1e26,#3a1520)">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>

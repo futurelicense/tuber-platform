@@ -24,9 +24,9 @@
   <div class="grid cols-5">
     {% for c in tools %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+      <div class="course-cover has-img" data-initials="{{ c.title[:2]|upper }}"
            style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#3a1520,#e5111c{% elif loop.index0 % 3 == 1 %}#7a1520,#ff5b63{% else %}#1b1e26,#e5111c{% endif %})">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>
@@ -51,9 +51,9 @@
   <div class="grid cols-5">
     {% for c in use_cases %}
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}">
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="AI"
+      <div class="course-cover has-img" data-initials="AI"
            style="background:linear-gradient(145deg,#1b1e26,#3a1520)">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>

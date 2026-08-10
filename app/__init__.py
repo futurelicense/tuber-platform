@@ -11,6 +11,9 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Marketplace + Academy media uploads (must exist even before first admin upload).
+    os.makedirs(app.config.get("LISTING_UPLOAD_DIR") or "listing_uploads", exist_ok=True)
+
     db.init_app(app)
     login_manager.init_app(app)
     migrate.init_app(app, db)
@@ -47,6 +50,12 @@ def create_app(config_class=Config):
         from datetime import datetime, timezone
 
         return {"current_year": datetime.now(timezone.utc).year}
+
+    @app.context_processor
+    def inject_academy_cover_helper():
+        from .academy.covers import resolve_course_cover_url
+
+        return {"academy_cover_url": resolve_course_cover_url}
 
     @app.route("/healthz")
     def healthz():
@@ -97,6 +106,14 @@ def register_cli(app):
             f"Seeded '{course.title}' — {len(course.units)} units, {lesson_count} lessons "
             f"(id={course.id}, slug={course.slug})."
         )
+
+    @app.cli.command("repair-academy-covers")
+    def repair_academy_covers():
+        """Replace missing upload covers with durable static Academy artwork."""
+        from .academy.covers import repair_missing_upload_covers
+
+        n = repair_missing_upload_covers()
+        click.echo(f"Repaired {n} course cover(s).")
 
     @app.cli.command("run-suggest-agent")
     def run_suggest_agent():

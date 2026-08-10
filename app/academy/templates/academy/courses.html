@@ -15,10 +15,10 @@
 {% else %}
 {% if featured_continue and can_learn %}
 <section class="card featured-continue" style="padding:0;overflow:hidden;margin-bottom:22px">
-  <div class="course-cover {% if featured_continue.cover_image_url %}has-img{% endif %}"
+  <div class="course-cover has-img"
        data-initials="{{ featured_continue.title[:2]|upper }}"
        style="height:100%;min-height:140px;border-radius:0">
-    {% if featured_continue.cover_image_url %}<img src="{{ featured_continue.cover_image_url }}" alt="">{% endif %}
+    <img src="{{ academy_cover_url(featured_continue) }}" alt="">
   </div>
   <div style="padding:20px 22px;display:flex;flex-direction:column;justify-content:center;gap:10px">
     <div class="eyebrow">{{ featured_continue.category or 'AI Mastery' }}</div>
@@ -54,9 +54,9 @@
     <a class="card course-card" href="{{ url_for('academy.course_detail', slug=c.slug) }}"
        style="{% if active_catalog == 'tool' %}display:grid;grid-template-columns:72px 1fr;align-items:center;padding:14px;gap:14px{% endif %}">
       {% if active_catalog == 'tool' %}
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+      <div class="course-cover has-img" data-initials="{{ c.title[:2]|upper }}"
            style="height:64px;width:64px;border-radius:14px;margin:0">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div>
         <h3 style="margin:0;font-size:18px">{{ c.title }}</h3>
@@ -70,9 +70,9 @@
         {% endif %}
       </div>
       {% else %}
-      <div class="course-cover {% if c.cover_image_url %}has-img{% endif %}" data-initials="{{ c.title[:2]|upper }}"
+      <div class="course-cover has-img" data-initials="{{ c.title[:2]|upper }}"
            style="background:linear-gradient(145deg,{% if loop.index0 % 3 == 0 %}#3a1520,#e5111c{% elif loop.index0 % 3 == 1 %}#2a1218,#e5111c{% else %}#3a1520,#ff5b63{% endif %})">
-        {% if c.cover_image_url %}<img src="{{ c.cover_image_url }}" alt="">{% endif %}
+        <img src="{{ academy_cover_url(c) }}" alt="">
       </div>
       <div class="course-body">
         <h3>{{ c.title }}</h3>

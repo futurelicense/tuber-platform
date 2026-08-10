@@ -773,7 +773,7 @@
   <div class="hp-grid cols-4" style="margin-top:36px">
     {% for c in academy_courses %}
     <article class="hp-card hp-acad-course reveal">
-      <div class="cover"{% if c.cover_image_url %} style="background-image:url('{{ c.cover_image_url }}')"{% endif %}></div>
+      <div class="cover" style="background-image:url('{{ academy_cover_url(c) }}')"></div>
       <div class="body">
         <span class="meta">{{ c.catalog.replace('_', ' ') }}{% if c.category %} · {{ c.category }}{% endif %}</span>
         <h3>{{ c.title }}</h3>

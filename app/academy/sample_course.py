@@ -20,6 +20,8 @@ COURSE = {
     "tags": "ChatGPT, Scripts, Hooks, Titles, Faceless",
     "estimated_lessons": 9,
     "estimated_hours": 1.5,
+    # Durable static asset (survives Render deploys; not LISTING_UPLOAD_DIR).
+    "cover_image_url": "academy/covers/chatgpt.svg",
     "status": "published",
     "is_featured": True,
     "sort_order": 0,
@@ -254,6 +256,7 @@ def seed_sample_course(force=False):
         tags=COURSE["tags"],
         estimated_lessons=COURSE["estimated_lessons"],
         estimated_hours=COURSE["estimated_hours"],
+        cover_image_url=COURSE.get("cover_image_url"),
         status=COURSE["status"],
         is_featured=COURSE["is_featured"],
         sort_order=COURSE["sort_order"],

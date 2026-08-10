@@ -166,6 +166,17 @@ class AcademyTests(unittest.TestCase):
         self.assertFalse(created_again)
         self.assertEqual(again.id, course.id)
 
+    def test_cover_falls_back_when_upload_missing(self):
+        from app.academy.covers import resolve_course_cover_url
+
+        course, _lesson = self._seed_course()
+        course.cover_image_url = "/marketplace/uploads/academy-missingdeadbeef.webp"
+        db.session.commit()
+        with self.app.test_request_context("/"):
+            url = resolve_course_cover_url(course)
+        self.assertIn("/static/academy/covers/", url)
+        self.assertNotIn("marketplace/uploads", url)
+
     def test_homepage_showcases_academy_when_open(self):
         course, _lesson = self._seed_course()
         course.is_featured = True

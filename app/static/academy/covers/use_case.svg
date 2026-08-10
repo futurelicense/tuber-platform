@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="Use case course">
+  <defs>
+    <linearGradient id="g" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14171f"/>
+      <stop offset="50%" stop-color="#2a1218"/>
+      <stop offset="100%" stop-color="#e5111c"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#g)"/>
+  <rect x="480" y="90" width="220" height="320" rx="24" fill="#fff" opacity=".1"/>
+  <rect x="510" y="130" width="160" height="18" rx="6" fill="#fff" opacity=".55"/>
+  <rect x="510" y="170" width="120" height="14" rx="6" fill="#fff" opacity=".3"/>
+  <rect x="510" y="210" width="160" height="14" rx="6" fill="#fff" opacity=".3"/>
+  <rect x="510" y="250" width="140" height="14" rx="6" fill="#fff" opacity=".3"/>
+  <text x="86" y="280" fill="#fff" font-family="system-ui,sans-serif" font-size="34" font-weight="800">Use Cases</text>
+  <text x="86" y="320" fill="#ffb3b7" font-family="system-ui,sans-serif" font-size="18">Practical AI workflows</text>
+</svg>
