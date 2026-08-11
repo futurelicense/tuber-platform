@@ -186,9 +186,10 @@ class AcademyTests(unittest.TestCase):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_data(as_text=True)
+        self.assertIn("AI Skills for Content Creation", body)
+        self.assertIn('id="skills"', body)
+        self.assertIn('id="affiliate"', body)
         self.assertIn("MoneyTuber Academy", body)
-        self.assertIn("id=\"academy\"", body)
-        self.assertIn(course.title, body)
         self.assertIn("/academy/signup", body)
 
     def test_admin_rejects_invalid_category(self):

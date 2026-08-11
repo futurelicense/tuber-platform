@@ -1,5 +1,5 @@
 {% extends "marketing_base.html" %}
-{% block title %}MoneyTuber — Turn YouTube Into Digital Real Estate{% endblock %}
+{% block title %}MoneyTuber — AI Skills → YouTube Digital Real Estate{% endblock %}
 {% block main_attrs %} class="full-bleed"{% endblock %}
 
 {% block header %}
@@ -10,15 +10,17 @@
       <span>Money<span class="accent">Tuber</span></span>
     </a>
     <nav class="hp-nav">
-      <a href="#offers">What we offer</a>
+      <a href="#skills">AI Skills</a>
+      <a href="#bridge">Digital Real Estate</a>
+      <a href="#affiliate">Affiliate</a>
       <a href="#results">Results</a>
-      <a href="#how">How it works</a>
-      {% if academy_open %}
-      <a href="#academy">Academy</a>
-      {% endif %}
       <a href="#faq">FAQ</a>
     </nav>
-    <a href="#offers" class="btn hp-header-cta">Get my free teardown</a>
+    {% if academy_open %}
+    <a href="{{ url_for('academy.signup') }}" class="btn hp-header-cta">Start Academy</a>
+    {% else %}
+    <a href="#offers" class="btn hp-header-cta">Get started</a>
+    {% endif %}
   </div>
 </header>
 {% endblock %}
@@ -163,6 +165,90 @@
   .hp-acad-course a.more{margin-top:14px;font-size:13px;font-weight:600;color:var(--text)}
   .hp-acad-course a.more:hover{color:var(--brand);text-decoration:none}
 
+  /* 3D skill lanes */
+  .hp-skills-stage{perspective:1400px;margin-top:40px}
+  .hp-lane{
+    position:relative;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;
+    border:1px solid var(--line-bright);background:rgba(18,20,27,.9);
+    transform-style:preserve-3d;transform:rotateX(8deg) rotateY(-4deg) translateZ(0);
+    transition:transform .45s cubic-bezier(.2,.8,.2,1),box-shadow .45s ease,border-color .3s ease;
+    box-shadow:0 30px 60px -40px rgba(0,0,0,.9),0 0 0 1px rgba(229,17,28,.08);
+    will-change:transform;text-decoration:none;color:inherit;min-height:100%;
+  }
+  .hp-lane:nth-child(2){transform:rotateX(8deg) rotateY(2deg)}
+  .hp-lane:nth-child(3){transform:rotateX(6deg) rotateY(-3deg)}
+  .hp-lane:nth-child(4){transform:rotateX(7deg) rotateY(4deg)}
+  .hp-lane:hover,.hp-lane.is-tilting{
+    border-color:rgba(229,17,28,.55);
+    box-shadow:0 40px 80px -36px rgba(229,17,28,.45),0 20px 40px -30px rgba(0,0,0,.9);
+    text-decoration:none;color:inherit;
+  }
+  .hp-lane-visual{position:relative;aspect-ratio:16/10;overflow:hidden;transform:translateZ(28px)}
+  .hp-lane-visual img{width:100%;height:100%;object-fit:cover;display:block;
+    transform:scale(1.06);transition:transform .7s ease}
+  .hp-lane:hover .hp-lane-visual img{transform:scale(1.14)}
+  .hp-lane-visual::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,transparent 35%,rgba(2,3,8,.92) 100%);
+  }
+  .hp-lane-shine{pointer-events:none;position:absolute;inset:-40%;
+    background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 48%,transparent 62%);
+    transform:translateX(-60%) rotate(12deg);transition:transform .8s ease;z-index:2}
+  .hp-lane:hover .hp-lane-shine{transform:translateX(60%) rotate(12deg)}
+  .hp-lane-body{position:relative;padding:18px 18px 20px;transform:translateZ(40px);z-index:1}
+  .hp-lane-body .k{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--brand)}
+  .hp-lane-body h3{margin:8px 0 0;font-size:20px;line-height:1.2}
+  .hp-lane-body p{margin:8px 0 0;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .hp-lane-body .go{display:inline-flex;margin-top:14px;font-size:13px;font-weight:700;color:#fff}
+  @media (max-width:900px){
+    .hp-lane,.hp-lane:nth-child(n){transform:none}
+  }
+
+  .hp-orb{position:absolute;border-radius:50%;filter:blur(40px);pointer-events:none;opacity:.55;
+    animation:hp-float 9s ease-in-out infinite}
+  .hp-orb.a{width:220px;height:220px;background:rgba(229,17,28,.35);top:8%;left:-40px;animation-delay:0s}
+  .hp-orb.b{width:180px;height:180px;background:rgba(255,91,99,.22);bottom:12%;right:-30px;animation-delay:-3s}
+  @keyframes hp-float{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(18px,-22px,40px) scale(1.08)}}
+  .hp-hero-card-3d{transform-style:preserve-3d;transform:perspective(1200px) rotateY(-8deg) rotateX(6deg);
+    transition:transform .5s ease;will-change:transform}
+  .hp-hero-card-3d:hover{transform:perspective(1200px) rotateY(-2deg) rotateX(2deg) translateZ(12px)}
+  .hp-float{transform:translateZ(48px)}
+  @media (prefers-reduced-motion: reduce){
+    .hp-orb,.hp-lane,.hp-lane-visual img,.hp-lane-shine,.hp-hero-card-3d{animation:none;transition:none}
+  }
+
+  .hp-bridge-rail{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:36px}
+  @media (max-width:900px){ .hp-bridge-rail{grid-template-columns:1fr} }
+  .hp-bridge-step{padding:22px;border-radius:16px;border:1px solid var(--line);background:rgba(18,20,27,.75);
+    transform:translateZ(0);transition:transform .35s ease,border-color .3s}
+  .hp-bridge-step:hover{transform:translateY(-6px);border-color:rgba(229,17,28,.45)}
+  .hp-bridge-step .n{font-size:12px;font-weight:800;letter-spacing:.18em;color:var(--brand)}
+  .hp-bridge-step h3{margin:10px 0 0;font-size:22px}
+  .hp-bridge-step p{margin:10px 0 0;color:var(--muted);font-size:14px;line-height:1.55}
+
+  .hp-affiliate-band{position:relative;overflow:hidden;border:1px solid rgba(229,17,28,.55);
+    border-radius:22px;padding:42px 36px;background:
+      radial-gradient(900px 280px at 10% 0%,rgba(229,17,28,.35),transparent 55%),
+      linear-gradient(135deg,#1a0a0d,#0a0b10 55%,#1b1014)}
+  .hp-affiliate-band::before{
+    content:"";position:absolute;inset:-20%;background:
+      conic-gradient(from 180deg at 50% 50%,transparent,rgba(229,17,28,.12),transparent 40%);
+    animation:hp-spin 18s linear infinite;pointer-events:none}
+  @keyframes hp-spin{to{transform:rotate(360deg)}}
+  .hp-affiliate-inner{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;
+    gap:28px;flex-wrap:wrap}
+  .hp-affiliate-inner h2{margin:0;font-size:36px;line-height:1.05;max-width:560px}
+  .hp-affiliate-inner p{margin:12px 0 0;max-width:520px;color:rgba(233,231,225,.82);font-size:15px;line-height:1.6}
+  .hp-aff-stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:18px}
+  .hp-aff-stats div{min-width:120px}
+  .hp-aff-stats strong{display:block;font-size:22px;color:#fff}
+  .hp-aff-stats span{font-size:12px;color:var(--muted)}
+  .hp-affiliate-cta{display:flex;flex-direction:column;gap:10px;align-items:stretch;min-width:220px}
+  @media (max-width:700px){
+    .hp-affiliate-band{padding:28px 20px}
+    .hp-affiliate-inner h2{font-size:28px}
+  }
+
   .hp-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     box-shadow:0 24px 60px -30px rgba(0,0,0,.85);transition:transform .3s ease,border-color .3s ease}
   .hp-card:hover{transform:translateY(-4px);border-color:rgba(229,17,28,.5)}
@@ -289,14 +375,7 @@
   .hp-step h3{margin:8px 0 0;font-size:21px}
   .hp-step p{margin:8px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6}
 
-  /* AFFILIATE BAND */
-  .hp-affiliate-band{position:relative;overflow:hidden;border:1px solid rgba(229,17,28,.4);
-    border-radius:16px;background:linear-gradient(135deg,rgba(229,17,28,.14),rgba(229,17,28,.02));
-    padding:36px}
-  .hp-affiliate-inner{position:relative;display:flex;align-items:center;justify-content:space-between;
-    gap:24px;flex-wrap:wrap}
-  .hp-affiliate-inner h2{margin:0;font-size:30px}
-  .hp-affiliate-inner p{margin:10px 0 0;max-width:480px;color:var(--muted);font-size:13.5px;line-height:1.6}
+  /* AFFILIATE BAND styles live with 3D skill CSS above */
 
   /* FAQ */
   .hp-faq-wrap{max-width:720px;margin:0 auto}
@@ -335,19 +414,21 @@
 <!-- HERO -->
 <section class="hp-hero">
   <div class="hp-hero-bg" aria-hidden="true"></div>
+  <span class="hp-orb a" aria-hidden="true"></span>
+  <span class="hp-orb b" aria-hidden="true"></span>
   <div class="hp-hero-inner">
     <div>
-      <span class="hp-badge reveal"><span class="dot"></span> 7 teardown slots left this week</span>
-      <h1 class="reveal">Turn YouTube into <span class="accent">digital real estate</span>.</h1>
-      <p class="lede reveal">MoneyTuber trains squads of clippers and producers to grow and monetize
-        YouTube channels — for clients, and for you. Grow from scratch, scale what you already have,
-        own a channel outright{% if academy_open %}, or learn AI skills inside Academy{% endif %}.</p>
+      <span class="hp-badge reveal"><span class="dot"></span> AI skills that pay in the real world</span>
+      <h1 class="reveal">Get <span class="accent">AI skills</span> — then own YouTube digital real estate.</h1>
+      <p class="lede reveal">Learn practical AI for content, career, family, and business. Then deploy those
+        skills to grow, buy, or operate YouTube assets — and earn as an affiliate when others join.</p>
       <div class="hp-cta-row reveal">
-        <a href="#offers" class="btn">Claim my free channel teardown</a>
         {% if academy_open %}
-        <a href="#academy" class="btn quiet">Explore Academy</a>
+        <a href="#skills" class="btn">Explore AI skill lanes</a>
+        <a href="{{ url_for('academy.signup') }}" class="btn quiet">Join Academy →</a>
         {% else %}
-        <a href="#results" class="btn quiet">See real results</a>
+        <a href="#bridge" class="btn">See the path</a>
+        <a href="#offers" class="btn quiet">Get started</a>
         {% endif %}
       </div>
       <div class="hp-avatars reveal">
@@ -356,12 +437,12 @@
           <img src="{{ url_for('static', filename='homepage/person-2.jpg') }}" alt="">
           <img src="{{ url_for('static', filename='homepage/person-3.jpg') }}" alt="">
         </div>
-        <p><strong>240+ operators</strong> already run channels with us</p>
+        <p><strong>Creators · operators · affiliates</strong> building with MoneyTuber</p>
       </div>
     </div>
 
     <div class="hp-hero-visual reveal">
-      <div class="hp-hero-card">
+      <div class="hp-hero-card hp-hero-card-3d" data-tilt>
         <img src="{{ url_for('static', filename='homepage/dashboard.jpg') }}"
              alt="Channel analytics dashboard showing subscriber growth trending upward">
         <div class="hp-float bl">
@@ -377,9 +458,9 @@
   </div>
 
   <dl class="hp-stats">
+    <div><dd data-countup="4" data-suffix="">0</dd><p>AI skill lanes</p></div>
     <div><dd data-countup="180" data-suffix="M+">0</dd><p>views produced</p></div>
     <div><dd data-countup="240" data-suffix="+">0</dd><p>channels operated</p></div>
-    <div><dd data-countup="31" data-suffix=" days">0</dd><p>median monetization pace</p></div>
     <div><dd data-countup="97" data-suffix="%">0</dd><p>clients renew</p></div>
   </dl>
 </section>
@@ -388,16 +469,109 @@
 <div class="hp-marquee">
   <div class="hp-marquee-track">
     {% for _ in range(2) %}
+    <span>AI for content</span><span class="dot">◆</span>
+    <span>AI for office promotions</span><span class="dot">◆</span>
+    <span>AI for parents</span><span class="dot">◆</span>
+    <span>AI for business growth</span><span class="dot">◆</span>
+    <span>YouTube digital real estate</span><span class="dot">◆</span>
+    <span>Affiliate commissions</span><span class="dot">◆</span>
     <span>Faceless channels</span><span class="dot">◆</span>
-    <span>Clipper squads</span><span class="dot">◆</span>
-    <span>Monetization ops</span><span class="dot">◆</span>
-    <span>Channel acquisitions</span><span class="dot">◆</span>
-    {% if academy_open %}<span>AI Academy</span><span class="dot">◆</span>{% endif %}
-    <span>Thumbnail testing</span><span class="dot">◆</span>
-    <span>Shorts engines</span><span class="dot">◆</span>
     {% endfor %}
   </div>
 </div>
+
+<!-- AI SKILL LANES -->
+<section class="hp-section" id="skills">
+  <div class="reveal" style="max-width:720px">
+    <p class="hp-eyebrow">Be faster with AI</p>
+    <h2 class="hp-h2">Four lanes. Pick where AI makes you dangerous.</h2>
+    <p class="hp-lede">Pictorial paths into MoneyTuber Academy — practical skills first, then YouTube assets.</p>
+  </div>
+  <div class="hp-grid cols-4 hp-skills-stage" style="align-items:stretch">
+    <a class="hp-lane reveal" data-tilt href="{% if academy_open %}{{ url_for('academy.courses', catalog='use_case', category='Creation') }}{% else %}#offers{% endif %}">
+      <div class="hp-lane-visual">
+        <img src="{{ url_for('static', filename='homepage/lane-content.jpg') }}" alt="Creator using AI for content production">
+        <span class="hp-lane-shine" aria-hidden="true"></span>
+      </div>
+      <div class="hp-lane-body">
+        <span class="k">Lane 01</span>
+        <h3>AI Skills for Content Creation</h3>
+        <p>Scripts, hooks, thumbnails, Shorts — ship content faster without losing taste.</p>
+        <span class="go">Enter lane →</span>
+      </div>
+    </a>
+    <a class="hp-lane reveal" data-tilt href="{% if academy_open %}{{ url_for('academy.courses', catalog='use_case', category='Business') }}{% else %}#offers{% endif %}">
+      <div class="hp-lane-visual">
+        <img src="{{ url_for('static', filename='homepage/lane-office.jpg') }}" alt="Professional using AI to accelerate office work">
+        <span class="hp-lane-shine" aria-hidden="true"></span>
+      </div>
+      <div class="hp-lane-body">
+        <span class="k">Lane 02</span>
+        <h3>AI Skills for Office Work &amp; Promotions</h3>
+        <p>Reports, decks, research, and communication that make managers notice.</p>
+        <span class="go">Enter lane →</span>
+      </div>
+    </a>
+    <a class="hp-lane reveal" data-tilt href="{% if academy_open %}{{ url_for('academy.courses', catalog='use_case', category='Self-improvement') }}{% else %}#offers{% endif %}">
+      <div class="hp-lane-visual">
+        <img src="{{ url_for('static', filename='homepage/lane-parents.jpg') }}" alt="Parent using AI skills at home">
+        <span class="hp-lane-shine" aria-hidden="true"></span>
+      </div>
+      <div class="hp-lane-body">
+        <span class="k">Lane 03</span>
+        <h3>AI Skills for Parents</h3>
+        <p>Save hours on planning, learning help, and side projects — without the overwhelm.</p>
+        <span class="go">Enter lane →</span>
+      </div>
+    </a>
+    <a class="hp-lane reveal" data-tilt href="{% if academy_open %}{{ url_for('academy.courses', catalog='use_case', category='Marketing and Growth') }}{% else %}#offers{% endif %}">
+      <div class="hp-lane-visual">
+        <img src="{{ url_for('static', filename='homepage/lane-business.jpg') }}" alt="Business owner using AI to grow revenue">
+        <span class="hp-lane-shine" aria-hidden="true"></span>
+      </div>
+      <div class="hp-lane-body">
+        <span class="k">Lane 04</span>
+        <h3>AI Skills to Grow Your Business</h3>
+        <p>Offers, outreach, ops, and customer content that compounds revenue.</p>
+        <span class="go">Enter lane →</span>
+      </div>
+    </a>
+  </div>
+  {% if academy_open %}
+  <div style="margin-top:28px;text-align:center" class="reveal">
+    <a class="btn" href="{{ url_for('academy.signup') }}">Start Academy{% if academy_price %} · from {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}{% endif %} →</a>
+  </div>
+  {% endif %}
+</section>
+
+<!-- BRIDGE: AI → YOUTUBE REAL ESTATE -->
+<section class="hp-section" id="bridge" style="border-top:1px solid var(--line);background:rgba(18,20,27,.25)">
+  <div class="reveal" style="max-width:720px">
+    <p class="hp-eyebrow">The MoneyTuber bridge</p>
+    <h2 class="hp-h2">Then put AI to work on YouTube digital real estate.</h2>
+    <p class="hp-lede">Skills are the engine. A monetized channel is the asset — ads, memberships, Shorts, partnerships compounding while you sleep.</p>
+  </div>
+  <div class="hp-bridge-rail">
+    <div class="hp-bridge-step reveal">
+      <span class="n">01 · LEARN</span>
+      <h3>AI skills first</h3>
+      <p>Academy courses + tools for content, career, family, and business speed.</p>
+      <a href="#skills" class="btn quiet block" style="margin-top:16px">See skill lanes</a>
+    </div>
+    <div class="hp-bridge-step reveal">
+      <span class="n">02 · DEPLOY</span>
+      <h3>Own the asset</h3>
+      <p>Grow with our squads, buy a vetted channel, or train with Master Class — same destination: Partner status.</p>
+      <a href="#offers" class="btn quiet block" style="margin-top:16px">Choose a path</a>
+    </div>
+    <div class="hp-bridge-step reveal">
+      <span class="n">03 · EARN</span>
+      <h3>Affiliate the funnel</h3>
+      <p>Share your link. Earn when people join Academy and convert on channel / Master Class offers.</p>
+      <a href="#affiliate" class="btn block" style="margin-top:16px">Affiliate trigger →</a>
+    </div>
+  </div>
+</section>
 
 <!-- RESULTS -->
 <section class="hp-section" id="results">
@@ -535,41 +709,29 @@
       <p style="margin:18px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">A monetized
         channel is digital real estate that appreciates with every content posted — no tenants,
         no service charge, no land dispute.</p>
-      <a href="#offers" class="btn block" style="margin-top:20px">Flip my switch — start now</a>
+      <a href="#bridge" class="btn block" style="margin-top:20px">Deploy AI on YouTube assets</a>
     </div>
   </div>
 
-  <div class="hp-grid {{ 'cols-4' if academy_open else 'cols-3' }}" style="margin-top:26px">
+  <div class="hp-grid cols-3" style="margin-top:26px">
     <div class="hp-card hp-path-card reveal">
-      <span class="k">Path 01</span>
+      <span class="k">Deploy 01</span>
       <h4>We build it. You rest.</h4>
-      <p>Hand us the channel (or start from zero). Our team scripts, edits, publishes and
-        optimises until the Partner screen says monetized — you just collect.</p>
-      <a href="#offers" class="btn block" style="margin-top:18px">Get the free teardown</a>
+      <p>Use AI skills with our clipper + producer squads until Partner status flips — you collect.</p>
+      <a href="#offers" class="btn block" style="margin-top:18px">Grow &amp; monetize</a>
     </div>
     <div class="hp-card hp-path-card reveal">
-      <span class="k">Path 02</span>
+      <span class="k">Deploy 02</span>
       <h4>Buy a monetized channel</h4>
-      <p>Landed property sits still. A monetized channel appreciates with every upload — ads,
-        memberships, Supers, shopping and partnerships turned on from day one.</p>
-      <a href="#offers" class="btn quiet block" style="margin-top:18px">See available channels</a>
+      <p>Skip zero-to-one. Own digital real estate with ads, memberships, and partnerships live.</p>
+      <a href="#offers" class="btn quiet block" style="margin-top:18px">See channels</a>
     </div>
     <div class="hp-card hp-path-card reveal">
-      <span class="k">Path 03</span>
-      <h4>Join TMT MasterClass</h4>
-      <p>Team MoneyTuber trains you to monetize like a pro — the exact 0→1k playbook, formats
-        and posting engine we run internally.</p>
-      <a href="#offers" class="btn quiet block" style="margin-top:18px">Join the MasterClass</a>
+      <span class="k">Deploy 03</span>
+      <h4>Master Class playbook</h4>
+      <p>Train the 0→1k engine yourself — then layer Academy AI skills on top of every upload.</p>
+      <a href="#offers" class="btn quiet block" style="margin-top:18px">Join Master Class</a>
     </div>
-    {% if academy_open %}
-    <div class="hp-card hp-path-card reveal">
-      <span class="k">Path 04</span>
-      <h4>MoneyTuber Academy</h4>
-      <p>Learn AI tools, use cases and challenges built for creators — prompt drills, listen
-        lessons and courses you can sell as an affiliate.</p>
-      <a href="#academy" class="btn quiet block" style="margin-top:18px">See Academy courses</a>
-    </div>
-    {% endif %}
   </div>
 </section>
 
@@ -610,35 +772,41 @@
 <!-- OFFERS -->
 <section class="hp-section" id="offers">
   <div class="hp-offers-head reveal">
-    <p class="hp-eyebrow">{{ 'Four ways in' if academy_open else 'Three ways in' }}</p>
-    <h2 class="hp-h2">Pick where you are today</h2>
+    <p class="hp-eyebrow">{{ 'Start with AI — then choose your asset path' if academy_open else 'Pick your entry' }}</p>
+    <h2 class="hp-h2">Where do you want leverage?</h2>
     <p class="hp-lede" style="margin-left:auto;margin-right:auto">
       {% if academy_open %}
-      Grow with us, buy a channel, join Master Class, or start Academy — channels and AI skills
-      under one MoneyTuber roof.
+      Academy is the loud front door. Grow, buy, and Master Class turn AI skill into YouTube equity.
       {% else %}
-      Every path starts with one form — name, email and your phone number. A human replies inside 24 hours.
+      Every path starts with a human reply inside 24 hours.
       {% endif %}
     </p>
-    <div class="hp-offers-badges">
-      <span class="hp-slot-badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--brand);display:inline-block"></span> 7 teardown slots left</span>
-      {% if whatsapp_number %}
-      <a class="hp-wa-link" target="_blank" rel="noopener"
-         href="https://wa.me/{{ whatsapp_number }}?text={{ 'Hi MoneyTuber — I want my free channel teardown.' | urlencode }}">
-        Live Chat Admin instantly →
-      </a>
-      {% endif %}
-    </div>
   </div>
 
   <div class="hp-grid {{ 'cols-2' if academy_open else 'cols-3' }}" style="margin-top:40px;align-items:stretch">
-    <!-- Grow & Monetize -->
+    {% if academy_open %}
     <div class="hp-card hp-offer-card featured reveal">
-      <span class="hp-offer-badge-top">Most requested</span>
-      <span class="hp-offer-eyebrow">Track 01</span>
+      <span class="hp-offer-badge-top">Start here</span>
+      <span class="hp-offer-eyebrow">Track 01 · AI</span>
+      <h3>MoneyTuber Academy</h3>
+      <p class="pitch">AI skills for content, office promotions, parents, and business growth — then aim them at YouTube.</p>
+      <ul class="hp-offer-bullets">
+        <li>Four pictorial skill lanes into real courses</li>
+        <li>Direct entry{% if academy_price %} from {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}{% endif %} · or relate with admin</li>
+        <li>Affiliates earn on paid enrollments</li>
+      </ul>
+      <a href="{{ url_for('academy.signup') }}" class="btn block hp-offer-open-link">Join Academy →</a>
+      <a href="#skills" class="hp-wa-link block" style="justify-content:center;margin-top:9px">Browse skill lanes</a>
+      <p class="hp-offer-proof">Learn inside the app — Courses, AI Tools, live admin chat.</p>
+    </div>
+    {% endif %}
+
+    <!-- Grow & Monetize -->
+    <div class="hp-card hp-offer-card {{ '' if academy_open else 'featured' }} reveal">
+      {% if not academy_open %}<span class="hp-offer-badge-top">Most requested</span>{% endif %}
+      <span class="hp-offer-eyebrow">{{ 'Track 02' if academy_open else 'Track 01' }} · Deploy</span>
       <h3>Grow &amp; Monetize</h3>
-      <p class="pitch">You have a channel — or you're starting at zero. Our clipper and producer
-        squads run the daily grind that gets you monetized and past the plateau.</p>
+      <p class="pitch">You have a channel — or you're starting at zero. Our squads run the grind that gets you monetized.</p>
       <ul class="hp-offer-bullets">
         <li>Done-for-you posting cadence, 5–7x per week</li>
         <li>Hooks, titles and thumbnails tested weekly</li>
@@ -652,21 +820,14 @@
         <input name="phone" type="tel" placeholder="Phone number (+1...)">
         <button type="submit" class="btn block">Talk to us →</button>
       </form>
-      {% if whatsapp_number %}
-      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
-         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in "Grow & Monetize".') | urlencode }}">
-        Or Live Chat Admin now
-      </a>
-      {% endif %}
       <p class="hp-offer-proof">Free 20-min channel teardown. No pitch if we can't help.</p>
     </div>
 
     <!-- Buy a Channel -->
     <div class="hp-card hp-offer-card reveal">
-      <span class="hp-offer-eyebrow">Track 02</span>
+      <span class="hp-offer-eyebrow">{{ 'Track 03' if academy_open else 'Track 02' }} · Deploy</span>
       <h3>Buy a Channel</h3>
-      <p class="pitch">Monetized and unmonetized channels, vetted and ready to hand off. Skip the
-        zero-to-one and own the asset from day one.</p>
+      <p class="pitch">Monetized and unmonetized channels, vetted and ready. Skip zero-to-one — own the asset.</p>
       <ul class="hp-offer-bullets">
         <li>Revenue, RPM and watch-time verified before listing</li>
         <li>Transfer, rebrand and ops handled end-to-end</li>
@@ -692,22 +853,15 @@
         </div>
         <button type="submit" class="btn quiet block">Join the waitlist</button>
       </form>
-      {% if whatsapp_number %}
-      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
-         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in "Buy a Channel".') | urlencode }}">
-        Or Live Chat Admin now
-      </a>
-      {% endif %}
-      <p class="hp-offer-proof">412 people ahead of you. Storefront opens in batches.</p>
+      <p class="hp-offer-proof">Storefront opens in batches.</p>
       {% endif %}
     </div>
 
     <!-- Master Class -->
     <div class="hp-card hp-offer-card reveal">
-      <span class="hp-offer-eyebrow">Track 03</span>
+      <span class="hp-offer-eyebrow">{{ 'Track 04' if academy_open else 'Track 03' }} · Deploy</span>
       <h3>0→1k Master Class</h3>
-      <p class="pitch">Learn YouTube as a creator — niche finding, scripting, faceless content,
-        SEO and publishing. Everything it takes to go 0 to 1,000 subscribers in 30 days.</p>
+      <p class="pitch">Learn YouTube as a creator — niche, scripting, faceless, SEO. Layer AI skills on every week.</p>
       <ul class="hp-offer-bullets">
         <li>The exact niche + hook framework our squads run</li>
         <li>Faceless production stack, start to publish</li>
@@ -724,52 +878,23 @@
         <input name="phone" type="tel" placeholder="Phone number (+1...)">
         <button type="submit" class="btn quiet block">Join the waitlist</button>
       </form>
-      {% if whatsapp_number %}
-      <a class="hp-wa-link block" style="justify-content:center;margin-top:9px" target="_blank" rel="noopener"
-         href="https://wa.me/{{ whatsapp_number }}?text={{ ('Hi MoneyTuber — I\'m interested in \"0→1k Master Class\".') | urlencode }}">
-        Or Live Chat Admin now
-      </a>
-      {% endif %}
       <p class="hp-offer-proof">Founding cohort pricing locked for waitlist only.</p>
       {% endif %}
     </div>
-
-    {% if academy_open %}
-    <!-- Academy -->
-    <div class="hp-card hp-offer-card reveal">
-      <span class="hp-offer-eyebrow">Track 04</span>
-      <h3>MoneyTuber Academy</h3>
-      <p class="pitch">Practical AI courses for creators and operators — tools, use cases and
-        challenges with read, listen, video and interactive lessons.</p>
-      <ul class="hp-offer-bullets">
-        <li>AI tool courses + real prompt drills</li>
-        <li>Direct entry{% if academy_price %} from {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}{% endif %}, or relate with admin</li>
-        <li>Affiliates earn on paid Academy enrollments</li>
-      </ul>
-      <a href="{{ url_for('academy.signup') }}" class="btn block hp-offer-open-link">Join Academy →</a>
-      <a href="{{ url_for('academy.courses') }}" class="hp-wa-link block" style="justify-content:center;margin-top:9px">
-        Browse courses first
-      </a>
-      <p class="hp-offer-proof">Learn inside the app — Home, Courses, Tools and Profile.</p>
-    </div>
-    {% endif %}
   </div>
 </section>
 
-{% if academy_open %}
-<!-- ACADEMY SHOWCASE -->
+{% if academy_open and academy_courses %}
+<!-- ACADEMY COURSE STRIP -->
 <section class="hp-section" id="academy" style="border-top:1px solid var(--line);background:rgba(18,20,27,.25)">
   <div style="display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px">
     <div class="reveal" style="max-width:560px">
-      <p class="hp-eyebrow">Academy</p>
-      <h2 class="hp-h2">AI skills that pair with YouTube ops</h2>
-      <p class="hp-lede">Same MoneyTuber brand — courses you can take yourself or sell with your
-        affiliate link.</p>
+      <p class="hp-eyebrow">Inside Academy</p>
+      <h2 class="hp-h2">Courses live now</h2>
+      <p class="hp-lede">Take them yourself — or sell them with your affiliate link.</p>
     </div>
     <a href="{{ url_for('academy.home') }}" class="btn quiet reveal">Open Academy →</a>
   </div>
-
-  {% if academy_courses %}
   <div class="hp-grid cols-4" style="margin-top:36px">
     {% for c in academy_courses %}
     <article class="hp-card hp-acad-course reveal">
@@ -783,17 +908,6 @@
     </article>
     {% endfor %}
   </div>
-  {% else %}
-  <div class="hp-card reveal" style="margin-top:36px;padding:28px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
-    <div>
-      <h3 style="margin:0;font-size:20px">Courses are opening inside Academy</h3>
-      <p style="margin:8px 0 0;color:var(--muted);font-size:14px;max-width:480px">
-        Create your learner account to get Direct Entry or message admin for access.
-      </p>
-    </div>
-    <a href="{{ url_for('academy.signup') }}" class="btn">Get started →</a>
-  </div>
-  {% endif %}
 </section>
 {% endif %}
 
@@ -803,33 +917,42 @@
   <div class="hp-grid cols-3 hp-steps" style="margin-top:36px" data-steps>
     <div class="hp-card hp-step reveal">
       <span class="n">01</span>
-      <h3>Free teardown</h3>
-      <p>We audit your channel or niche and tell you exactly what's blocking the algorithm.</p>
+      <h3>Learn AI skills</h3>
+      <p>Pick a lane — content, office, parents, or business — and train inside Academy.</p>
     </div>
     <div class="hp-card hp-step reveal">
       <span class="n">02</span>
-      <h3>Squad assigned</h3>
-      <p>A clipper, a producer and an operator take over the daily output. You approve, we ship.</p>
+      <h3>Deploy on YouTube</h3>
+      <p>Grow, buy, or Master Class — turn skill into a monetized channel asset.</p>
     </div>
     <div class="hp-card hp-step reveal">
       <span class="n">03</span>
-      <h3>Monetize &amp; compound</h3>
-      <p>Once revenue lands, we scale format winners and turn the channel into an asset you own.</p>
+      <h3>Affiliate the upside</h3>
+      <p>Share your link. Earn when others join Academy and convert on asset offers.</p>
     </div>
   </div>
 </section>
 
 <!-- AFFILIATE -->
 <section class="hp-section" id="affiliate">
-  <div class="hp-affiliate-band reveal">
+  <div class="hp-affiliate-band reveal" data-tilt-soft>
     <div class="hp-affiliate-inner">
       <div>
-        <h2>Earn by sending us people.</h2>
-        <p>Get your own referral link and earn a commission on every prospect who converts —
-          buying a channel, joining the Master Class, growing with us{% if academy_open %}, or
-          enrolling in Academy{% endif %}.</p>
+        <p class="hp-eyebrow" style="margin:0">Affiliate trigger</p>
+        <h2>Don't just learn AI. Get paid when other people do.</h2>
+        <p>Your referral link sells Academy enrollments{% if academy_open %}{% endif %}, channel deals, and Master Class seats. One audience — multiple commission events.</p>
+        <div class="hp-aff-stats">
+          <div><strong>Academy</strong><span>paid Direct Entry commissions</span></div>
+          <div><strong>Assets</strong><span>buy · grow · Master Class</span></div>
+          <div><strong>You</strong><span>one link, recurring pipeline</span></div>
+        </div>
       </div>
-      <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate →</a>
+      <div class="hp-affiliate-cta">
+        <a href="{{ url_for('affiliate.signup') }}" class="btn">Become an affiliate →</a>
+        {% if academy_open %}
+        <a href="{{ url_for('academy.signup') }}" class="btn quiet">Or join Academy first</a>
+        {% endif %}
+      </div>
     </div>
   </div>
 </section>
@@ -862,10 +985,10 @@
       {% if academy_open %}
       <details class="hp-faq reveal">
         <summary>What is MoneyTuber Academy?</summary>
-        <p>An in-app learning track for AI tools and creator workflows — separate from channel
-          ops and Master Class. Join via Direct Entry{% if academy_price %} (about
+        <p>Four AI skill lanes — content, office promotions, parents, and business growth — that
+          feed into YouTube digital real estate. Join via Direct Entry{% if academy_price %} (about
           {{ academy_currency }} {{ '%.0f'|format(academy_price|float) }}){% endif %}
-          or relate with admin, then learn courses at your pace.</p>
+          or relate with admin, then learn at your pace.</p>
       </details>
       {% endif %}
     </div>
@@ -875,32 +998,35 @@
 <!-- FINAL CTA -->
 <section class="hp-section hp-final">
   <div class="reveal">
-    <h2>The channel you don't start today is the asset you don't own next year.</h2>
+    <h2>AI skills today. YouTube equity tomorrow. Affiliate upside every referral.</h2>
     <div class="hp-cta-row">
-      <a href="#offers" class="btn">Claim my free teardown</a>
-      {% if whatsapp_number %}
-      <a class="btn quiet" target="_blank" rel="noopener"
-         href="https://wa.me/{{ whatsapp_number }}?text={{ 'Hi MoneyTuber — I want my free channel teardown.' | urlencode }}">
-        Live Chat Admin
-      </a>
+      {% if academy_open %}
+      <a href="{{ url_for('academy.signup') }}" class="btn">Start Academy</a>
+      <a href="#affiliate" class="btn quiet">Become an affiliate</a>
+      {% else %}
+      <a href="#offers" class="btn">Get started</a>
       {% endif %}
     </div>
-    <p class="fine">7 slots left this week · replies within 24 hours</p>
+    <p class="fine">Learn → Deploy on digital real estate → Earn when others join</p>
   </div>
 </section>
 
 <footer class="hp-foot">
   <div style="display:flex;flex-wrap:wrap;gap:14px 22px;justify-content:center;margin-bottom:12px;font-size:13px">
-    <a href="#offers" style="color:var(--muted)">Offers</a>
+    <a href="#skills" style="color:var(--muted)">AI Skills</a>
+    <a href="#bridge" style="color:var(--muted)">Digital Real Estate</a>
+    <a href="#affiliate" style="color:var(--muted)">Affiliate</a>
     {% if marketplace_open %}<a href="{{ url_for('marketplace.browse') }}" style="color:var(--muted)">Marketplace</a>{% endif %}
-    {% if master_class_open %}<a href="{{ url_for('master_class.sales') }}" style="color:var(--muted)">Master Class</a>{% endif %}
     {% if academy_open %}<a href="{{ url_for('academy.home') }}" style="color:var(--muted)">Academy</a>{% endif %}
-    <a href="{{ url_for('affiliate.signup') }}" style="color:var(--muted)">Affiliate</a>
   </div>
-  &copy; {{ current_year }} MoneyTuber — Digital real estate for YouTube.
+  &copy; {{ current_year }} MoneyTuber — AI skills → YouTube digital real estate.
 </footer>
 <div class="hp-sticky-cta">
-  <a href="#offers" class="btn block">Claim my free teardown · 7 left</a>
+  {% if academy_open %}
+  <a href="{{ url_for('academy.signup') }}" class="btn block">Start Academy · AI skills that pay</a>
+  {% else %}
+  <a href="#offers" class="btn block">Get started</a>
+  {% endif %}
 </div>
 
 <script>
@@ -1004,6 +1130,28 @@
     countEls.forEach(function (el) { countIo.observe(el); });
   } else {
     countEls.forEach(animateCount);
+  }
+
+  /* 3D pointer tilt — skill lanes + hero card */
+  if (!reduceMotion) {
+    document.querySelectorAll("[data-tilt], [data-tilt-soft]").forEach(function (card) {
+      var soft = card.hasAttribute("data-tilt-soft");
+      var max = soft ? 4 : 12;
+      card.addEventListener("pointermove", function (e) {
+        var r = card.getBoundingClientRect();
+        var x = (e.clientX - r.left) / r.width;
+        var y = (e.clientY - r.top) / r.height;
+        var rx = (0.5 - y) * max;
+        var ry = (x - 0.5) * max;
+        card.classList.add("is-tilting");
+        card.style.transform =
+          "perspective(1200px) rotateX(" + rx + "deg) rotateY(" + ry + "deg) translateZ(8px)";
+      });
+      card.addEventListener("pointerleave", function () {
+        card.classList.remove("is-tilting");
+        card.style.transform = "";
+      });
+    });
   }
 })();
 </script>
