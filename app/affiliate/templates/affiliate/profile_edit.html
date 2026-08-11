@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Edit your public profile — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:0 auto">
+  <h2>Your public profile</h2>
+  <p class="hint">Shown at your <code>/a/{{ affiliate.referral_code }}</code> page — a
+    name/photo/pitch page you can share instead of (or alongside) your bare referral link.
+    Higher trust than a raw URL, especially with a real audience.</p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label for="profile_photo">Photo (optional)</label>
+    <input id="profile_photo" name="profile_photo" type="file" accept="image/png,image/jpeg,image/webp">
+    <div class="hint" style="margin-top:-8px">PNG, JPG, or WEBP.</div>
+    {% if affiliate.profile_photo_url %}
+    <div style="margin:0 0 14px;display:flex;gap:12px;align-items:center">
+      <img src="{{ affiliate.profile_photo_url }}" alt="Current photo"
+           style="width:72px;height:72px;object-fit:cover;border-radius:50%;border:1px solid var(--line)">
+      <label style="display:flex;align-items:center;gap:8px;margin:0">
+        <input type="checkbox" name="clear_photo" style="width:auto;margin:0">
+        Remove photo
+      </label>
+    </div>
+    {% endif %}
+
+    <label for="profile_headline">Headline</label>
+    <input id="profile_headline" name="profile_headline" type="text" maxlength="160"
+           placeholder="e.g. Helping creators go from 0 to monetized"
+           value="{{ affiliate.profile_headline or '' }}">
+
+    <label for="profile_bio">Your pitch</label>
+    <textarea id="profile_bio" name="profile_bio" rows="6" maxlength="2000"
+              placeholder="Tell prospects who you are and why they should trust you.">{{ affiliate.profile_bio or '' }}</textarea>
+
+    <button type="submit" style="width:100%">Save profile</button>
+  </form>
+  <div class="hint" style="margin-top:14px"><a href="{{ url_for('affiliate.dashboard') }}">&larr; Back to dashboard</a></div>
+</div>
+{% endblock %}

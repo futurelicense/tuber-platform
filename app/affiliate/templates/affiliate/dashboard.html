@@ -3,9 +3,22 @@
 {% block content %}
 <div class="card" style="margin-bottom:18px">
   <h2>Your referral link</h2>
-  <p class="hint">Share this with prospects — anyone who submits their info through it is tracked
-    as yours.</p>
+  <p class="hint">Share this everywhere — it now sends prospects straight to a real buy page
+    (set by MoneyTuber), not a form, so it converts faster. Anyone who lands through it is
+    tracked as yours, on this link or any of the specific links below.</p>
   <input type="text" value="{{ referral_url }}" readonly onclick="this.select()"
+         style="margin-bottom:8px;font-family:monospace">
+  <p class="hint" style="margin:0">Prefer to talk to a prospect first instead of sending them
+    straight to checkout? Share the <a href="{{ contact_url }}" target="_blank">contact-form
+    link</a> instead.</p>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h2>Your public profile</h2>
+  <p class="hint">A name/photo/pitch page — share this instead of (or alongside) your bare
+    referral link for a higher-trust first impression, especially with a real audience.
+    <a href="{{ url_for('affiliate.edit_profile') }}">Edit your profile &rarr;</a></p>
+  <input type="text" value="{{ profile_url }}" readonly onclick="this.select()"
          style="margin-bottom:0;font-family:monospace">
 </div>
 
@@ -69,6 +82,7 @@
 </div>
 
 <div class="grid" style="margin-bottom:18px">
+  <div class="stat"><div class="n">{{ click_count }}</div><div class="l">Link clicks</div></div>
   <div class="stat"><div class="n">${{ '%.2f' | format(totals.pending) }}</div><div class="l">Pending commission</div></div>
   <div class="stat"><div class="n">${{ '%.2f' | format(totals.approved) }}</div><div class="l">Approved commission</div></div>
   <div class="stat"><div class="n">${{ '%.2f' | format(totals.paid) }}</div><div class="l">Paid out</div></div>

@@ -10,6 +10,11 @@ PROSPECT_INTEREST_TYPES = (
 )
 PROSPECT_STATUSES = ("new", "contacted", "converted", "lost")
 COMMISSION_STATUSES = ("pending", "approved", "paid", "voided")
+# Where an affiliate's bare /r/<code> link sends a visitor. "contact" is the
+# original generic lead-capture form; the others skip straight to a real
+# purchase page so a prospect with buying intent doesn't have to go through
+# an admin-mediated round trip first.
+DEFAULT_LANDING_CHOICES = ("academy_signup", "academy_home", "marketplace", "contact")
 
 
 class Prospect(db.Model):
@@ -112,6 +117,29 @@ class Commission(db.Model):
     )
 
 
+class LinkClick(db.Model):
+    """One row per distinct referred visit — recorded whenever a fresh
+    ?ref=<code>/affiliate/r/<code> hit resolves to a real, active affiliate
+    and that code isn't already the one in the visitor's session (so a
+    reload or a second page view under the same browser session doesn't
+    double-count). Funnel measurement only, no PII: pairs with Prospect
+    (submitted leads) and Commission (paid conversions) to answer
+    clicks -> leads -> paid for a given affiliate, which prospect capture
+    alone can't show.
+    """
+
+    __tablename__ = "link_clicks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    affiliate_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    destination = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+
+    affiliate = db.relationship("User", foreign_keys=[affiliate_id])
+
+
 def effective_commission_rate(affiliate):
     """The rate a new commission for this affiliate should use: their own
     override if set, else the program-wide default. Shared by the admin
@@ -131,17 +159,25 @@ class AffiliateProgramSettings(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     default_commission_rate_percent = db.Column(db.Numeric(5, 2), nullable=False, default=10)
+    default_landing = db.Column(db.String(20), nullable=False, default="academy_signup")
     updated_at = db.Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    __table_args__ = (
+        db.CheckConstraint(
+            "default_landing in ('academy_signup','academy_home','marketplace','contact')",
+            name="ck_affiliate_settings_default_landing",
+        ),
+    )
+
     @classmethod
     def get(cls):
         row = cls.query.get(1)
         if row is None:
-            row = cls(id=1, default_commission_rate_percent=10)
+            row = cls(id=1, default_commission_rate_percent=10, default_landing="academy_signup")
             db.session.add(row)
             db.session.commit()
         return row

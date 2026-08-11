@@ -1,0 +1,33 @@
+{% extends "marketing_base.html" %}
+{% block title %}{{ affiliate.display_name or "MoneyTuber affiliate" }} — MoneyTuber{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px;margin:40px auto;text-align:center">
+  {% if affiliate.profile_photo_url %}
+  <img src="{{ affiliate.profile_photo_url }}" alt="{{ affiliate.display_name or 'Affiliate' }}"
+       style="width:96px;height:96px;object-fit:cover;border-radius:50%;margin-bottom:14px">
+  {% else %}
+  <div style="width:96px;height:96px;border-radius:50%;margin:0 auto 14px;background:var(--panel-2);
+              border:1px solid var(--line-bright);display:flex;align-items:center;justify-content:center;
+              font-size:34px;font-weight:700;color:var(--brand-soft)">
+    {{ (affiliate.display_name or affiliate.email)[0] | upper }}
+  </div>
+  {% endif %}
+
+  <h1 style="margin:0 0 4px;font-size:22px">{{ affiliate.display_name or "MoneyTuber affiliate" }}</h1>
+  {% if affiliate.profile_headline %}
+  <p style="margin:0 0 18px;color:var(--muted);font-size:15px">{{ affiliate.profile_headline }}</p>
+  {% endif %}
+
+  {% if affiliate.profile_bio %}
+  <p style="text-align:left;white-space:pre-wrap;color:var(--text);line-height:1.6;margin:0 0 24px">{{ affiliate.profile_bio }}</p>
+  {% endif %}
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <a href="{{ academy_url }}" class="btn" style="width:100%">Join MoneyTuber Academy</a>
+    {% if has_listings %}
+    <a href="{{ marketplace_url }}" class="btn secondary" style="width:100%">Browse channel marketplace</a>
+    {% endif %}
+    <a href="{{ contact_url }}" class="btn secondary" style="width:100%">Talk to {{ affiliate.display_name or "them" }} first</a>
+  </div>
+</div>
+{% endblock %}

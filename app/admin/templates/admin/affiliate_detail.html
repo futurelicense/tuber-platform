@@ -4,7 +4,8 @@
 <div class="card" style="margin-bottom:18px">
   <h2>{{ affiliate.display_name or affiliate.email }}</h2>
   <p class="hint">{{ affiliate.email }} &middot; referral code <code>{{ affiliate.referral_code }}</code>
-    &middot; effective rate {{ effective_rate }}%</p>
+    &middot; effective rate {{ effective_rate }}% &middot; {{ click_count }} link clicks
+    {% if affiliate.is_pilot %}&middot; <span class="pill ok">Pilot</span>{% endif %}</p>
   <form method="post" action="{{ url_for('admin.set_affiliate_rate', user_id=affiliate.id) }}"
         style="display:flex;gap:12px;align-items:flex-end">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -16,6 +17,26 @@
     <div><button type="submit" style="margin-bottom:14px">Set rate</button></div>
   </form>
 </div>
+
+{% if affiliate.profile_headline or affiliate.profile_bio or affiliate.profile_photo_url %}
+<div class="card" style="margin-bottom:18px">
+  <h2>Public profile (<a href="{{ url_for('affiliate.public_profile', code=affiliate.referral_code) }}" target="_blank">/a/{{ affiliate.referral_code }}</a>)</h2>
+  <div style="display:flex;gap:16px;align-items:flex-start">
+    {% if affiliate.profile_photo_url %}
+    <img src="{{ affiliate.profile_photo_url }}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:50%;flex-shrink:0">
+    {% endif %}
+    <div>
+      {% if affiliate.profile_headline %}<p style="margin:0 0 6px;font-weight:600">{{ affiliate.profile_headline }}</p>{% endif %}
+      {% if affiliate.profile_bio %}<p class="hint" style="white-space:pre-wrap;color:var(--text)">{{ affiliate.profile_bio }}</p>{% endif %}
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('admin.clear_affiliate_profile', user_id=affiliate.id) }}"
+        onsubmit="return confirm('Clear this affiliate\'s public profile (photo, headline, bio)?')" style="margin-top:10px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="pill off" style="border:none;cursor:pointer">Clear public profile</button>
+  </form>
+</div>
+{% endif %}
 
 <div class="card" style="margin-bottom:18px">
   <h2>Prospects</h2>

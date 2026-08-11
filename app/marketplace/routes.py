@@ -8,6 +8,7 @@ from . import bp
 from .services import mark_order_paid, reserve_listing, release_listing, release_stale_reservations
 from .. import paystack
 from ..extensions import db
+from ..affiliate.tracking import record_click
 from ..models import User, Prospect, ChannelListing, ChannelOrder
 
 logger = logging.getLogger(__name__)
@@ -48,8 +49,11 @@ def _resolve_ref_code():
     """Prefer ?ref= on the URL, persist it to session, else reuse session."""
     from_query = (request.args.get("ref") or "").strip()
     if from_query:
-        session["ref_code"] = from_query.upper()
-        return from_query.upper()
+        code = from_query.upper()
+        if session.get("ref_code") != code:
+            record_click(code, "marketplace")
+        session["ref_code"] = code
+        return code
     return (session.get("ref_code") or "").strip() or None
 
 

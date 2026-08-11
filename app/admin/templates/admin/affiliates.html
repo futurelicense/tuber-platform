@@ -2,36 +2,71 @@
 {% block title %}Affiliates — MoneyTuber{% endblock %}
 {% block content %}
 <div class="card" style="margin-bottom:18px">
-  <h2>Default commission rate</h2>
-  <p class="hint">Applies to any affiliate without a per-affiliate override.</p>
+  <h2>Program settings</h2>
+  <p class="hint">Default commission rate applies to any affiliate without a per-affiliate
+    override. Default landing is where an affiliate's bare <code>/r/&lt;code&gt;</code> link
+    sends a visitor — point it at a real buy page so clicks convert without an admin-mediated
+    round trip.</p>
   <form method="post" action="{{ url_for('admin.update_affiliate_settings') }}"
-        style="display:flex;gap:12px;align-items:flex-end">
+        style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="max-width:160px">
       <label for="default_commission_rate_percent">Rate (%)</label>
       <input id="default_commission_rate_percent" name="default_commission_rate_percent"
              type="number" step="0.01" min="0" value="{{ settings.default_commission_rate_percent }}" required>
     </div>
+    <div style="max-width:220px">
+      <label for="default_landing">Default link destination</label>
+      <select id="default_landing" name="default_landing">
+        {% for choice in default_landing_choices %}
+        <option value="{{ choice }}" {{ 'selected' if settings.default_landing == choice }}>
+          {{ {"academy_signup": "Academy signup (best for sales)", "academy_home": "Academy home",
+              "marketplace": "Channel marketplace", "contact": "Generic contact form"}[choice] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
     <div><button type="submit" style="margin-bottom:14px">Update</button></div>
   </form>
 </div>
 
 <div class="card" style="margin-bottom:18px">
+  <h2>Pilot cohort</h2>
+  <p class="hint">Affiliates flagged below as pilot are the test group (e.g. 20 affiliates with
+    500+ followers) — numbers here are pilot-only, separate from the wider affiliate base.</p>
+  <div class="grid">
+    <div class="stat"><div class="n">{{ pilot_summary.affiliate_count }}</div><div class="l">Pilot affiliates</div></div>
+    <div class="stat"><div class="n">{{ pilot_summary.click_count }}</div><div class="l">Link clicks</div></div>
+    <div class="stat"><div class="n">{{ pilot_summary.prospect_count }}</div><div class="l">Prospects</div></div>
+    <div class="stat"><div class="n">{{ pilot_summary.converted_count }}</div><div class="l">Converted</div></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
   <h2>Affiliates</h2>
   <table>
-    <tr><th>Affiliate</th><th>Referral code</th><th>Prospects</th><th>Pending</th><th>Approved</th><th>Paid</th><th></th></tr>
+    <tr><th>Affiliate</th><th>Referral code</th><th>Clicks</th><th>Prospects</th><th>Pending</th><th>Approved</th><th>Paid</th><th>Pilot</th><th></th></tr>
     {% for row in rows %}
     <tr>
       <td>{{ row.user.display_name or row.user.email }}</td>
       <td><code>{{ row.user.referral_code }}</code></td>
+      <td>{{ row.click_count }}</td>
       <td>{{ row.prospect_count }}</td>
       <td>${{ '%.2f' | format(row.totals.pending) }}</td>
       <td>${{ '%.2f' | format(row.totals.approved) }}</td>
       <td>${{ '%.2f' | format(row.totals.paid) }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin.toggle_affiliate_pilot', user_id=row.user.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="pill {{ 'ok' if row.user.is_pilot else 'off' }}" style="border:none;cursor:pointer">
+            {{ 'Pilot' if row.user.is_pilot else 'Add to pilot' }}
+          </button>
+        </form>
+      </td>
       <td><a href="{{ url_for('admin.affiliate_detail', user_id=row.user.id) }}">View &rarr;</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="7" style="color:var(--faint)">No affiliates yet.</td></tr>
+    <tr><td colspan="9" style="color:var(--faint)">No affiliates yet.</td></tr>
     {% endfor %}
   </table>
 </div>

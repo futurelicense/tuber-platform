@@ -23,6 +23,21 @@ class User(UserMixin, db.Model):
     # affiliate-role-only fields; null and unused for admin/clipper/producer/learner.
     referral_code = db.Column(db.String(12), unique=True, index=True)
     commission_rate_percent = db.Column(db.Numeric(5, 2))
+    # Tags an affiliate as part of an admin-run test cohort (e.g. the 20
+    # affiliates with 500+ followers pilot) so admin can filter/report on
+    # that group's clicks/prospects/conversions separately from the wider
+    # affiliate base.
+    is_pilot = db.Column(db.Boolean, nullable=False, default=False)
+    # Public profile page (/a/<referral_code>) content, self-serve-edited by
+    # the affiliate. A "linktree-style" page an affiliate with a real
+    # audience can share instead of a bare /r/<code> link — a name/photo/
+    # pitch reads as trustworthy at 500+-follower scale in a way a raw
+    # referral URL doesn't. profile_photo_url follows the exact same
+    # save_image()+LISTING_UPLOAD_DIR+marketplace.uploaded_file pattern as
+    # AcademyCourse.cover_image_url, not a new upload path.
+    profile_photo_url = db.Column(db.String(500))
+    profile_headline = db.Column(db.String(160))
+    profile_bio = db.Column(db.Text)
 
     __table_args__ = (
         db.CheckConstraint(

@@ -22,6 +22,7 @@ from ..models import (
     Prospect,
     Commission,
     AffiliateProgramSettings,
+    LinkClick,
     effective_commission_rate,
     MasterClassEnrollment,
     MasterClassSettings,
@@ -33,7 +34,7 @@ from ..models import (
     AcademyLesson,
     AcademySettings,
 )
-from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES
+from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES, DEFAULT_LANDING_CHOICES
 from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
 from ..models.academy import (
     COURSE_CATALOGS,
@@ -361,30 +362,84 @@ def _commission_totals(affiliate_id):
 def affiliates():
     affiliate_users = User.query.filter_by(role="affiliate").order_by(User.created_at.desc()).all()
     rows = [
-        {"user": u, "prospect_count": Prospect.query.filter_by(affiliate_id=u.id).count(),
-         "totals": _commission_totals(u.id)}
+        {
+            "user": u,
+            "prospect_count": Prospect.query.filter_by(affiliate_id=u.id).count(),
+            "click_count": LinkClick.query.filter_by(affiliate_id=u.id).count(),
+            "totals": _commission_totals(u.id),
+        }
         for u in affiliate_users
     ]
     settings = AffiliateProgramSettings.get()
     direct_prospects = (
         Prospect.query.filter_by(affiliate_id=None).order_by(Prospect.created_at.desc()).all()
     )
+    pilot_rows = [r for r in rows if r["user"].is_pilot]
+    pilot_summary = {
+        "affiliate_count": len(pilot_rows),
+        "click_count": sum(r["click_count"] for r in pilot_rows),
+        "prospect_count": sum(r["prospect_count"] for r in pilot_rows),
+        "converted_count": Prospect.query.filter(
+            Prospect.affiliate_id.in_([r["user"].id for r in pilot_rows]), Prospect.status == "converted"
+        ).count()
+        if pilot_rows
+        else 0,
+    }
     return render_template(
-        "admin/affiliates.html", rows=rows, settings=settings, direct_prospects=direct_prospects
+        "admin/affiliates.html",
+        rows=rows,
+        settings=settings,
+        direct_prospects=direct_prospects,
+        pilot_summary=pilot_summary,
+        default_landing_choices=DEFAULT_LANDING_CHOICES,
     )
 
 
 @bp.route("/affiliates/settings", methods=["POST"])
 def update_affiliate_settings():
     rate = request.form.get("default_commission_rate_percent", type=float)
+    default_landing = request.form.get("default_landing")
     if rate is None or rate < 0:
         flash("Enter a valid default commission rate.", "error")
         return redirect(url_for("admin.affiliates"))
+    if default_landing not in DEFAULT_LANDING_CHOICES:
+        flash("Choose a valid default referral-link destination.", "error")
+        return redirect(url_for("admin.affiliates"))
     settings = AffiliateProgramSettings.get()
     settings.default_commission_rate_percent = rate
+    settings.default_landing = default_landing
     db.session.commit()
     flash(f"Default commission rate set to {rate}%.", "success")
     return redirect(url_for("admin.affiliates"))
+
+
+@bp.route("/affiliates/<int:user_id>/pilot", methods=["POST"])
+def toggle_affiliate_pilot(user_id):
+    affiliate = User.query.filter_by(id=user_id, role="affiliate").first_or_404()
+    affiliate.is_pilot = not affiliate.is_pilot
+    db.session.commit()
+    flash(
+        f"{affiliate.email} {'added to' if affiliate.is_pilot else 'removed from'} the pilot cohort.",
+        "success",
+    )
+    return redirect(url_for("admin.affiliates"))
+
+
+@bp.route("/affiliates/<int:user_id>/profile/clear", methods=["POST"])
+def clear_affiliate_profile(user_id):
+    # Moderation: the public /a/<code> page is affiliate-authored free text —
+    # admin needs a way to wipe it without needing the affiliate's cooperation.
+    affiliate = User.query.filter_by(id=user_id, role="affiliate").first_or_404()
+    if affiliate.profile_photo_url:
+        name = affiliate.profile_photo_url.rstrip("/").split("/")[-1]
+        if name.startswith("affiliate-") and ".." not in name and "/" not in name:
+            delete_image(name)
+    affiliate.profile_photo_url = None
+    affiliate.profile_headline = None
+    affiliate.profile_bio = None
+    db.session.commit()
+    flash(f"Cleared {affiliate.email}'s public profile.", "success")
+    return redirect(url_for("admin.affiliate_detail", user_id=affiliate.id))
 
 
 @bp.route("/affiliates/<int:user_id>")
@@ -401,12 +456,14 @@ def affiliate_detail(user_id):
         .all()
     )
     effective_rate = effective_commission_rate(affiliate)
+    click_count = LinkClick.query.filter_by(affiliate_id=affiliate.id).count()
     return render_template(
         "admin/affiliate_detail.html",
         affiliate=affiliate,
         prospects=prospects,
         commissions=commissions,
         effective_rate=effective_rate,
+        click_count=click_count,
         prospect_statuses=PROSPECT_STATUSES,
         commission_statuses=COMMISSION_STATUSES,
     )

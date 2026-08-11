@@ -8,6 +8,7 @@ from . import bp
 from . import services
 from .. import paystack
 from ..extensions import db
+from ..affiliate.tracking import record_click
 from ..html_sanitize import sanitize_rich_text, video_iframe_src
 from ..models import (
     User,
@@ -30,8 +31,11 @@ def _gate_open():
 def _resolve_ref_code():
     from_query = (request.args.get("ref") or "").strip()
     if from_query:
-        session["ref_code"] = from_query.upper()
-        return from_query.upper()
+        code = from_query.upper()
+        if session.get("ref_code") != code:
+            record_click(code, "academy")
+        session["ref_code"] = code
+        return code
     return (session.get("ref_code") or "").strip() or None
 
 

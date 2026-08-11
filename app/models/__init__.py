@@ -5,7 +5,14 @@ from .rewards import MetricDefinition, MetricEvent, RewardRule
 from .agent import WatchedChannel, DiscoveredVideo, SuggestedClip
 from .master_class import MasterClassEnrollment, MasterClassSettings
 from .marketplace import ChannelListing, ChannelOrder, ListingAttachment
-from .affiliate import Prospect, Commission, AffiliateProgramSettings, effective_commission_rate
+from .affiliate import (
+    Prospect,
+    Commission,
+    AffiliateProgramSettings,
+    LinkClick,
+    DEFAULT_LANDING_CHOICES,
+    effective_commission_rate,
+)
 from .academy import (
     AcademyCourse,
     AcademyUnit,
@@ -30,6 +37,8 @@ __all__ = [
     "Prospect",
     "Commission",
     "AffiliateProgramSettings",
+    "LinkClick",
+    "DEFAULT_LANDING_CHOICES",
     "effective_commission_rate",
     "MasterClassEnrollment",
     "MasterClassSettings",
