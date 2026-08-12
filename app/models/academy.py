@@ -151,6 +151,51 @@ class AcademyMessage(db.Model):
     )
 
 
+class AcademyCatalog(db.Model):
+    """Admin-managed course catalog (e.g. tool, use_case, challenge)."""
+
+    __tablename__ = "academy_catalogs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    label = db.Column(db.String(100), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    categories = db.relationship(
+        "AcademyCategory",
+        back_populates="catalog",
+        order_by="AcademyCategory.sort_order",
+        cascade="all, delete-orphan",
+    )
+
+
+class AcademyCategory(db.Model):
+    """Admin-managed category pill within a catalog."""
+
+    __tablename__ = "academy_categories"
+
+    id = db.Column(db.Integer, primary_key=True)
+    catalog_id = db.Column(
+        db.Integer, db.ForeignKey("academy_catalogs.id"), nullable=False, index=True
+    )
+    name = db.Column(db.String(100), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    catalog = db.relationship("AcademyCatalog", back_populates="categories")
+
+    __table_args__ = (
+        db.UniqueConstraint("catalog_id", "name", name="uq_academy_category_catalog_name"),
+    )
+
+
 class AcademyCourse(db.Model):
     """A learner-facing course (tool deep-dive, use-case path, or challenge)."""
 
@@ -161,7 +206,7 @@ class AcademyCourse(db.Model):
     slug = db.Column(db.String(220), nullable=False, unique=True, index=True)
     summary = db.Column(db.String(400))
     description = db.Column(db.Text)
-    catalog = db.Column(db.String(20), nullable=False, default="tool")
+    catalog = db.Column(db.String(50), nullable=False, default="tool")
     category = db.Column(db.String(100))
     tags = db.Column(db.String(255))
     estimated_lessons = db.Column(db.Integer)
@@ -189,9 +234,6 @@ class AcademyCourse(db.Model):
     )
 
     __table_args__ = (
-        db.CheckConstraint(
-            "catalog in ('tool','use_case','challenge')", name="ck_academy_course_catalog"
-        ),
         db.CheckConstraint(
             "status in ('draft','published','archived')", name="ck_academy_course_status"
         ),

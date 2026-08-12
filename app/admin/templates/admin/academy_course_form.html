@@ -19,8 +19,8 @@
     <label for="catalog">Catalog</label>
     <select id="catalog" name="catalog" required>
       {% for cat in catalogs %}
-      <option value="{{ cat }}" {{ 'selected' if course and course.catalog == cat else ('selected' if not course and cat == 'tool') }}>
-        {{ cat.replace('_', ' ') }}
+      <option value="{{ cat }}" {{ 'selected' if course and course.catalog == cat else ('selected' if not course and cat == catalogs[0]) }}>
+        {{ catalog_labels.get(cat, cat.replace('_', ' ')) }}
       </option>
       {% endfor %}
     </select>
@@ -29,7 +29,7 @@
     <select id="category" name="category">
       <option value="">— Select category —</option>
     </select>
-    <div class="hint">Predefined filter pills for this catalog.</div>
+    <div class="hint">Managed under <a href="{{ url_for('admin.academy_taxonomy_page') }}">Catalogs &amp; categories</a>.</div>
 
     <label for="tags">Tags (comma-separated)</label>
     <input id="tags" name="tags" type="text"
@@ -51,18 +51,18 @@
 
     <label for="cover_image">Cover image (optional)</label>
     <input id="cover_image" name="cover_image" type="file" accept="image/png,image/jpeg,image/webp">
-    <div class="hint" style="margin-top:-8px">PNG, JPG, or WEBP — shown on Academy catalog cards.</div>
+    <div class="hint" style="margin-top:-8px">PNG, JPG, or WEBP — shown on homepage and Academy course cards.</div>
     {% if course %}
     <div style="margin:0 0 14px;display:flex;gap:12px;align-items:center">
       <img src="{{ academy_cover_url(course) }}" alt="Current cover"
            style="width:120px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">
-      {% if course.cover_image_url and '/marketplace/uploads/' in course.cover_image_url %}
+      {% if is_upload_cover %}
       <label style="display:flex;align-items:center;gap:8px;margin:0">
         <input type="checkbox" name="clear_cover" style="width:auto;margin:0">
         Remove uploaded cover
       </label>
       {% else %}
-      <span class="hint" style="margin:0">Showing durable cover (upload a file to replace).</span>
+      <span class="hint" style="margin:0">Showing default cover (upload a file to replace).</span>
       {% endif %}
     </div>
     {% endif %}

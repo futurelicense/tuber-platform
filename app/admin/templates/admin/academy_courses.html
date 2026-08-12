@@ -35,7 +35,10 @@
       <h2 style="margin:0">Academy courses</h2>
       <p class="hint" style="margin:6px 0 0">Author tool courses, use-case paths, and challenges. Curriculum is built as units → lessons.</p>
     </div>
-    <a href="{{ url_for('admin.academy_new_course') }}"><button type="button">New course</button></a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{{ url_for('admin.academy_taxonomy_page') }}" class="btn secondary">Catalogs &amp; categories</a>
+      <a href="{{ url_for('admin.academy_new_course') }}"><button type="button">New course</button></a>
+    </div>
   </div>
   <table>
     <tr>

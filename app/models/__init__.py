@@ -21,6 +21,8 @@ from .academy import (
     AcademySettings,
     AcademySubscription,
     AcademyMessage,
+    AcademyCatalog,
+    AcademyCategory,
 )
 
 __all__ = [
@@ -52,4 +54,6 @@ __all__ = [
     "AcademySettings",
     "AcademySubscription",
     "AcademyMessage",
+    "AcademyCatalog",
+    "AcademyCategory",
 ]

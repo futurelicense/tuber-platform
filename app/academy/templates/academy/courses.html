@@ -1,5 +1,5 @@
 {% extends "academy/base.html" %}
-{% block title %}{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}Courses{% endif %} — Academy{% endblock %}
+{% block title %}{% if active_catalog %}{{ (catalogs|selectattr('slug','equalto',active_catalog)|map(attribute='label')|first) or 'Courses' }}{% else %}Courses{% endif %} — Academy{% endblock %}
 {% block head %}
 <style>
   .featured-continue{display:grid;grid-template-columns:160px 1fr;align-items:stretch}
@@ -10,7 +10,7 @@
 {% if active_catalog %}
 <div class="page-title">
   <a class="back" href="{{ url_for('academy.courses') }}" aria-label="Back">←</a>
-  <h1>{% if active_catalog == 'use_case' %}Discover AI use cases{% elif active_catalog == 'tool' %}Explore AI tools{% else %}Challenges{% endif %}</h1>
+  <h1>{{ (catalogs|selectattr('slug','equalto',active_catalog)|map(attribute='label')|first) or active_catalog }}</h1>
 </div>
 {% else %}
 {% if featured_continue and can_learn %}
@@ -38,9 +38,10 @@
 
 <div class="filters">
   <a href="{{ url_for('academy.courses') }}" class="{{ 'active' if not active_catalog and not active_category }}">All</a>
-  <a href="{{ url_for('academy.courses', catalog='tool') }}" class="{{ 'active' if active_catalog=='tool' and not active_category }}">AI tools</a>
-  <a href="{{ url_for('academy.courses', catalog='use_case') }}" class="{{ 'active' if active_catalog=='use_case' and not active_category }}">Use cases</a>
-  <a href="{{ url_for('academy.courses', catalog='challenge') }}" class="{{ 'active' if active_catalog=='challenge' and not active_category }}">Challenges</a>
+  {% for c in catalogs %}
+  <a href="{{ url_for('academy.courses', catalog=c.slug) }}"
+     class="{{ 'active' if active_catalog==c.slug and not active_category }}">{{ c.label }}</a>
+  {% endfor %}
   {% for cat in categories %}
   <a href="{{ url_for('academy.courses', catalog=active_catalog, category=cat) if active_catalog else url_for('academy.courses', category=cat) }}"
      class="{{ 'active' if active_category==cat }}">{{ cat }}</a>

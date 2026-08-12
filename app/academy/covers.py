@@ -1,9 +1,10 @@
 """Resolve Academy course cover URLs with durable static fallbacks.
 
 Admin uploads live under LISTING_UPLOAD_DIR and are referenced as
-`/marketplace/uploads/<filename>`. On Render those files only survive when the
-persistent disk is mounted; otherwise the DB URL 404s. This helper falls back
-to repo-bundled SVGs so cards always show artwork.
+`/marketplace/uploads/<filename>`. Once an upload is stored on the course,
+templates always receive that marketplace URL so homepage, Academy courses,
+and admin preview stay in sync. Static SVGs are only used when no cover
+was uploaded (or the cover is already a static relative path).
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ _STATIC_BY_SLUG = {
     SAMPLE_SLUG: "academy/covers/chatgpt.svg",
 }
 
+UPLOAD_URL_PREFIX = "/marketplace/uploads/"
+
 
 def default_cover_static_path(course):
     slug = getattr(course, "slug", None) or ""
@@ -36,13 +39,26 @@ def _upload_filename_from_url(url):
     if not url:
         return None
     # Relative app URL or absolute URL ending in /marketplace/uploads/<file>
-    marker = "/marketplace/uploads/"
+    marker = UPLOAD_URL_PREFIX
     if marker not in url:
+        # Bare filename stored as academy-….webp
+        name = url.strip().lstrip("/")
+        if name.startswith("academy-") and "/" not in name and "\\" not in name and ".." not in name:
+            return name
         return None
     name = url.split(marker, 1)[1].split("?", 1)[0].strip("/")
     if not name or "/" in name or "\\" in name or ".." in name:
         return None
     return name
+
+
+def normalize_upload_cover_url(filename: str) -> str:
+    """Canonical relative URL stored on AcademyCourse.cover_image_url."""
+    return f"{UPLOAD_URL_PREFIX}{filename}"
+
+
+def is_upload_cover_url(url: str | None) -> bool:
+    return _upload_filename_from_url(url or "") is not None
 
 
 def upload_file_exists(filename):
@@ -54,19 +70,23 @@ def upload_file_exists(filename):
 
 
 def resolve_course_cover_url(course):
-    """Return a working cover URL for templates (upload if present, else static)."""
+    """Return the cover URL used on homepage, Academy, and admin.
+
+    Uploaded covers always resolve to marketplace.uploaded_file so every
+    surface shows the same image. Missing files are not silently swapped
+    for SVG placeholders (use `flask repair-academy-covers` for that).
+    """
     raw = (getattr(course, "cover_image_url", None) or "").strip()
     if raw:
         filename = _upload_filename_from_url(raw)
         if filename:
-            if upload_file_exists(filename):
-                return url_for("marketplace.uploaded_file", filename=filename)
-            # Broken upload reference — use static fallback
-        elif raw.startswith("/static/") or raw.startswith("http://") or raw.startswith("https://"):
+            return url_for("marketplace.uploaded_file", filename=filename)
+        if raw.startswith("/static/") or raw.startswith("http://") or raw.startswith("https://"):
             return raw
-        elif not raw.startswith("/"):
+        if not raw.startswith("/"):
             # Allow storing static relative paths like academy/covers/tool.svg
             return url_for("static", filename=raw)
+        return raw
 
     return url_for("static", filename=default_cover_static_path(course))
 

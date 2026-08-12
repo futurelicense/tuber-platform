@@ -283,8 +283,10 @@ def pay_again():
 @bp.route("/courses")
 def courses():
     _gate_open()
+    catalog_rows = services.course_catalogs()
+    valid_slugs = {c.slug for c in catalog_rows}
     catalog = (request.args.get("catalog") or "").strip() or None
-    if catalog and catalog not in ("tool", "use_case", "challenge"):
+    if catalog and catalog not in valid_slugs:
         catalog = None
     category = (request.args.get("category") or "").strip() or None
     listings = services.published_courses(catalog=catalog, category=category)
@@ -305,6 +307,7 @@ def courses():
         "academy/courses.html",
         courses=listings,
         categories=categories,
+        catalogs=catalog_rows,
         active_catalog=catalog,
         active_category=category,
         progress=progress,

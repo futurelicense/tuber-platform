@@ -36,12 +36,9 @@ from ..models import (
 )
 from ..models.affiliate import PROSPECT_STATUSES, COMMISSION_STATUSES, DEFAULT_LANDING_CHOICES
 from ..models.marketplace import LISTING_STATUSES, MONETIZATION_STATUSES, ORDER_STATUSES
-from ..models.academy import (
-    COURSE_CATALOGS,
-    COURSE_CATEGORIES,
-    COURSE_CATEGORIES_BY_CATALOG,
-    LESSON_TYPES,
-)
+from ..models.academy import LESSON_TYPES
+from ..academy import taxonomy as academy_taxonomy
+from ..academy.covers import is_upload_cover_url, normalize_upload_cover_url
 from ..uploads import (
     save_image,
     save_media,
@@ -864,17 +861,17 @@ def _course_form_fields():
 
 
 def _validate_course_category(catalog, category):
-    if not category:
-        return True
-    allowed = COURSE_CATEGORIES_BY_CATALOG.get(catalog) or ()
-    return category in allowed or category in COURSE_CATEGORIES
+    return academy_taxonomy.validate_category(catalog, category)
 
 
 def _course_form_context(course=None):
+    catalogs = academy_taxonomy.active_catalogs()
     return {
         "course": course,
-        "catalogs": COURSE_CATALOGS,
-        "categories_by_catalog": COURSE_CATEGORIES_BY_CATALOG,
+        "catalogs": [c.slug for c in catalogs],
+        "catalog_labels": {c.slug: c.label for c in catalogs},
+        "categories_by_catalog": academy_taxonomy.categories_by_catalog_map(),
+        "is_upload_cover": is_upload_cover_url(course.cover_image_url) if course else False,
     }
 
 
@@ -923,17 +920,17 @@ def _apply_lesson_media_uploads(lesson):
 
 def _delete_stored_academy_cover(cover_url):
     """Remove a previously uploaded Academy cover if we own the file."""
-    if not cover_url:
-        return
-    name = cover_url.rstrip("/").split("/")[-1]
-    if name.startswith("academy-") and ".." not in name and "/" not in name:
+    from ..academy.covers import _upload_filename_from_url
+
+    name = _upload_filename_from_url(cover_url)
+    if name and name.startswith("academy-"):
         delete_image(name)
 
 
 def _resolve_course_cover_url(existing_url=None):
     """Handle cover file upload / clear. Returns (url_or_existing, error_or_None).
 
-    - New file → save under LISTING_UPLOAD_DIR, return public marketplace upload URL
+    - New file → save under LISTING_UPLOAD_DIR, return canonical /marketplace/uploads/… URL
     - clear_cover checked → delete prior upload, return None
     - Neither → keep existing_url
     """
@@ -944,7 +941,7 @@ def _resolve_course_cover_url(existing_url=None):
             filename, _, _, _ = save_image(upload, prefix="academy")
         except UploadRejected as e:
             return existing_url, str(e)
-        new_url = url_for("marketplace.uploaded_file", filename=filename)
+        new_url = normalize_upload_cover_url(filename)
         if existing_url and existing_url != new_url:
             _delete_stored_academy_cover(existing_url)
         return new_url, None
@@ -982,6 +979,69 @@ def academy_update_settings():
     return redirect(url_for("admin.academy_courses"))
 
 
+@bp.route("/academy/taxonomy")
+def academy_taxonomy_page():
+    catalogs = academy_taxonomy.all_catalogs()
+    return render_template("admin/academy_taxonomy.html", catalogs=catalogs)
+
+
+@bp.route("/academy/catalogs/new", methods=["POST"])
+def academy_new_catalog():
+    slug = (request.form.get("slug") or request.form.get("label") or "").strip()
+    label = (request.form.get("label") or "").strip()
+    sort_order = request.form.get("sort_order", type=int) or 0
+    _row, err = academy_taxonomy.create_catalog(slug, label, sort_order)
+    flash(err or "Catalog created.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
+@bp.route("/academy/catalogs/<int:catalog_id>/edit", methods=["POST"])
+def academy_edit_catalog(catalog_id):
+    label = (request.form.get("label") or "").strip()
+    sort_order = request.form.get("sort_order", type=int)
+    is_active = request.form.get("is_active") == "on"
+    _row, err = academy_taxonomy.update_catalog(
+        catalog_id, label=label, sort_order=sort_order, is_active=is_active
+    )
+    flash(err or "Catalog updated.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
+@bp.route("/academy/catalogs/<int:catalog_id>/delete", methods=["POST"])
+def academy_delete_catalog(catalog_id):
+    err = academy_taxonomy.delete_catalog(catalog_id)
+    flash(err or "Catalog deleted.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
+@bp.route("/academy/catalogs/<int:catalog_id>/categories/new", methods=["POST"])
+def academy_new_category(catalog_id):
+    name = (request.form.get("name") or "").strip()
+    sort_order = request.form.get("sort_order", type=int) or 0
+    _row, err = academy_taxonomy.create_category(catalog_id, name, sort_order)
+    flash(err or "Category created.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
+@bp.route("/academy/categories/<int:category_id>/edit", methods=["POST"])
+def academy_edit_category(category_id):
+    name = (request.form.get("name") or "").strip()
+    sort_order = request.form.get("sort_order", type=int)
+    is_active = request.form.get("is_active") == "on"
+    _row, err = academy_taxonomy.update_category(
+        category_id, name=name, sort_order=sort_order, is_active=is_active
+    )
+    flash(err or "Category updated.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
+@bp.route("/academy/categories/<int:category_id>/delete", methods=["POST"])
+def academy_delete_category(category_id):
+    err = academy_taxonomy.delete_category(category_id)
+    flash(err or "Category deleted.", "error" if err else "success")
+    return redirect(url_for("admin.academy_taxonomy_page"))
+
+
 @bp.route("/academy/courses/new", methods=["GET", "POST"])
 def academy_new_course():
     if request.method == "POST":
@@ -990,7 +1050,7 @@ def academy_new_course():
         if not fields["title"]:
             flash("Title is required.", "error")
             return render_template("admin/academy_course_form.html", **ctx)
-        if fields["catalog"] not in COURSE_CATALOGS:
+        if not academy_taxonomy.validate_catalog_slug(fields["catalog"]):
             flash("Invalid catalog.", "error")
             return render_template("admin/academy_course_form.html", **ctx)
         if not _validate_course_category(fields["catalog"], fields["category"]):
@@ -1042,7 +1102,7 @@ def academy_edit_course(course_id):
         if not fields["title"]:
             flash("Title is required.", "error")
             return render_template("admin/academy_course_form.html", **ctx)
-        if fields["catalog"] not in COURSE_CATALOGS:
+        if not academy_taxonomy.validate_catalog_slug(fields["catalog"]):
             flash("Invalid catalog.", "error")
             return render_template("admin/academy_course_form.html", **ctx)
         if not _validate_course_category(fields["catalog"], fields["category"]):

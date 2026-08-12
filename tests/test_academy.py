@@ -41,6 +41,9 @@ class AcademyTests(unittest.TestCase):
         self.ctx = self.app.app_context()
         self.ctx.push()
         db.create_all()
+        from app.academy.taxonomy import seed_default_taxonomy
+
+        seed_default_taxonomy()
         admin = User(email="admin@example.com", role="admin", display_name="Admin")
         admin.set_password("password123")
         db.session.add(admin)
@@ -168,15 +171,96 @@ class AcademyTests(unittest.TestCase):
         self.assertEqual(again.id, course.id)
 
     def test_cover_falls_back_when_upload_missing(self):
-        from app.academy.covers import resolve_course_cover_url
+        """Missing uploads still resolve to the marketplace URL (no silent SVG swap)."""
+        from app.academy.covers import resolve_course_cover_url, repair_missing_upload_covers
 
         course, _lesson = self._seed_course()
         course.cover_image_url = "/marketplace/uploads/academy-missingdeadbeef.webp"
         db.session.commit()
         with self.app.test_request_context("/"):
             url = resolve_course_cover_url(course)
-        self.assertIn("/static/academy/covers/", url)
-        self.assertNotIn("marketplace/uploads", url)
+        self.assertIn("marketplace/uploads/academy-missingdeadbeef.webp", url)
+
+        n = repair_missing_upload_covers()
+        self.assertEqual(n, 1)
+        course = AcademyCourse.query.get(course.id)
+        with self.app.test_request_context("/"):
+            repaired = resolve_course_cover_url(course)
+        self.assertIn("/static/academy/covers/", repaired)
+
+    def test_uploaded_cover_shows_on_homepage_and_courses(self):
+        import io
+        from PIL import Image
+
+        from app.academy.covers import resolve_course_cover_url
+
+        self._login("admin@example.com")
+        img = Image.new("RGB", (40, 24), color=(200, 20, 30))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        resp = self.client.post(
+            "/admin/academy/courses/new",
+            data={
+                "title": "Cover Course",
+                "catalog": "tool",
+                "category": "Writing",
+                "sort_order": 0,
+                "is_featured": "on",
+                "cover_image": (buf, "cover.png"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 302)
+        course = AcademyCourse.query.filter_by(slug="cover-course").first()
+        self.assertIsNotNone(course)
+        self.assertTrue(course.cover_image_url.startswith("/marketplace/uploads/academy-"))
+        course.status = "published"
+        db.session.commit()
+
+        with self.app.test_request_context("/"):
+            cover = resolve_course_cover_url(course)
+        self.assertIn("/marketplace/uploads/", cover)
+
+        self.client.get("/logout")
+        home = self.client.get("/")
+        self.assertEqual(home.status_code, 200)
+        self.assertIn(cover, home.get_data(as_text=True))
+
+        courses_page = self.client.get("/academy/courses")
+        self.assertEqual(courses_page.status_code, 200)
+        self.assertIn(cover, courses_page.get_data(as_text=True))
+
+    def test_admin_taxonomy_crud(self):
+        self._login("admin@example.com")
+        resp = self.client.post(
+            "/admin/academy/catalogs/new",
+            data={"label": "Workshops", "slug": "workshops", "sort_order": 30},
+        )
+        self.assertEqual(resp.status_code, 302)
+        from app.models import AcademyCatalog, AcademyCategory
+
+        catalog = AcademyCatalog.query.filter_by(slug="workshops").first()
+        self.assertIsNotNone(catalog)
+        resp = self.client.post(
+            f"/admin/academy/catalogs/{catalog.id}/categories/new",
+            data={"name": "Live cohort", "sort_order": 0},
+        )
+        self.assertEqual(resp.status_code, 302)
+        cat = AcademyCategory.query.filter_by(catalog_id=catalog.id, name="Live cohort").first()
+        self.assertIsNotNone(cat)
+
+        resp = self.client.post(
+            "/admin/academy/courses/new",
+            data={
+                "title": "Workshop One",
+                "catalog": "workshops",
+                "category": "Live cohort",
+                "sort_order": 0,
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIsNotNone(AcademyCourse.query.filter_by(slug="workshop-one").first())
 
     def test_homepage_showcases_academy_when_open(self):
         course, _lesson = self._seed_course()
