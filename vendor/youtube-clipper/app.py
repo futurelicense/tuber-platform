@@ -662,7 +662,7 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 #   AI_ENDPOINT=https://router.huggingface.co/hf-inference/v1/chat/completions
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.3-70b-versatile")
 
 # Overflow fallback via Hugging Face's Inference Providers router. HF free
 # credits are far too small to be a workhorse, so this only fires when the
