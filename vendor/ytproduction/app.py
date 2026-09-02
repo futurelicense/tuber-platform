@@ -43,7 +43,7 @@ OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "outpu
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.3-70b-versatile")
 
 JOBS: dict = {}
 app = Flask(__name__)
