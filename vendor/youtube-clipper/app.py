@@ -648,7 +648,7 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 #
 # Groq (free, fastest):
 #   AI_KEY=gsk_...          from console.groq.com
-#   AI_MODEL=llama-3.3-70b-versatile
+#   AI_MODEL=openai/gpt-oss-120b
 #   AI_ENDPOINT=https://api.groq.com/openai/v1/chat/completions
 #
 # OpenRouter (free models):
@@ -662,7 +662,7 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 #   AI_ENDPOINT=https://router.huggingface.co/hf-inference/v1/chat/completions
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "openai/gpt-oss-120b")
 
 # Overflow fallback via Hugging Face's Inference Providers router. HF free
 # credits are far too small to be a workhorse, so this only fires when the
@@ -673,6 +673,17 @@ _AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
 _FALLBACK_AI_ENDPOINT = os.environ.get(
     "FALLBACK_AI_ENDPOINT", "https://router.huggingface.co/v1/chat/completions")
 _FALLBACK_AI_MODEL = os.environ.get("FALLBACK_AI_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+
+# gpt-oss (and other Groq reasoning models) burn completion tokens on a
+# <think> block before ever emitting the answer — with reasoning_format's
+# "raw" default, a tight max_tokens can cut the response off mid-thought,
+# leaving no JSON for callers to find. "hidden" strips the think block from
+# content and "low" effort keeps it from eating the whole budget. Only Groq
+# accepts these fields; OpenRouter/HF error on unknown params.
+_GROQ_REASONING_KWARGS = (
+    {"reasoning_effort": "low", "reasoning_format": "hidden"}
+    if "groq.com" in _AI_ENDPOINT else {}
+)
 
 
 def _fallback_ai_completion(prompt, max_tokens, temperature):
@@ -844,6 +855,7 @@ Return ONLY a valid JSON array, no explanation, no markdown:
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 2048,
         "temperature": 0.3,
+        **_GROQ_REASONING_KWARGS,
     }).encode()
     req = _urllib_req.Request(
         _AI_ENDPOINT, data=body,
@@ -920,6 +932,7 @@ def _ai_chat_completion(prompt, max_tokens, retries=3):
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
         "temperature": 0.2,
+        **_GROQ_REASONING_KWARGS,
     }).encode()
 
     last_err = None

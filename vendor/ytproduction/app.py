@@ -43,7 +43,15 @@ OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "outpu
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "llama-3.1-8b-instant")
+_AI_MODEL    = os.environ.get("AI_MODEL",    "openai/gpt-oss-120b")
+
+# See vendor/youtube-clipper/app.py's identical comment: gpt-oss reasoning
+# models can burn max_tokens on a hidden <think> block before the real
+# answer, so pin low effort + hidden reasoning on Groq specifically.
+_GROQ_REASONING_KWARGS = (
+    {"reasoning_effort": "low", "reasoning_format": "hidden"}
+    if "groq.com" in _AI_ENDPOINT else {}
+)
 
 JOBS: dict = {}
 app = Flask(__name__)
@@ -74,7 +82,8 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
         msgs.append({"role": "system", "content": system})
     msgs.append({"role": "user", "content": prompt})
     payload = {"model": _AI_MODEL, "messages": msgs,
-               "max_tokens": max_tokens, "temperature": 0.4}
+               "max_tokens": max_tokens, "temperature": 0.4,
+               **_GROQ_REASONING_KWARGS}
     headers = {"Authorization": f"Bearer {ai_key}",
                "User-Agent": "Mozilla/5.0 (compatible; YTProd/1.0)"}
     last_err = None
