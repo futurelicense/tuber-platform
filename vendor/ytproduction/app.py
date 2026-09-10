@@ -43,7 +43,25 @@ OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "outpu
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "openai/gpt-oss-120b")
+_DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
+# Groq free/developer keys no longer serve these — they 404 model_not_found
+# (llama-3.x is Enterprise-only). Remap at call time so a stale Render
+# AI_MODEL=llama-3.1-8b-instant does not break jobs after redeploy.
+_RETIRED_GROQ_MODELS = frozenset({
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+})
+
+
+def _resolve_ai_model() -> str:
+    model = (os.environ.get("AI_MODEL") or _DEFAULT_AI_MODEL).strip()
+    if not model or model in _RETIRED_GROQ_MODELS:
+        return _DEFAULT_AI_MODEL
+    return model
+
 
 # See vendor/youtube-clipper/app.py's identical comment: gpt-oss reasoning
 # models can burn max_tokens on a hidden <think> block before the real
@@ -81,7 +99,7 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
     if system:
         msgs.append({"role": "system", "content": system})
     msgs.append({"role": "user", "content": prompt})
-    payload = {"model": _AI_MODEL, "messages": msgs,
+    payload = {"model": _resolve_ai_model(), "messages": msgs,
                "max_tokens": max_tokens, "temperature": 0.4,
                **_GROQ_REASONING_KWARGS}
     headers = {"Authorization": f"Bearer {ai_key}",
@@ -136,6 +154,60 @@ def _groq(prompt: str, system: str = "", max_tokens: int = 3000) -> str:
             print(f"  [ytprod] fallback AI failed too: {e}", flush=True)
     raise RuntimeError(f"Groq API unreachable after 4 attempts: {last_err}")
 
+def _parse_meta_block(content: str):
+    """Extract TITLE/DESCRIPTION/HASHTAGS from a plain-text ### META block.
+
+    Deliberately not JSON: a 150-250 word AI-written description routinely
+    contains quotes, apostrophes, and colons that a low-effort reasoning
+    model fails to escape correctly, breaking json.loads in ways no generic
+    repair can reliably undo. Same rationale as clipper's _parse_chapter_blocks
+    for chapter bodies — free text goes in a plain-text field, not a JSON string.
+    """
+    m = re.search(
+        r"TITLE:\s*(.*?)\s*"
+        r"DESCRIPTION:\s*(.*?)\s*"
+        r"HASHTAGS:\s*(.*?)\s*(?:###|\Z)",
+        content, re.DOTALL | re.IGNORECASE,
+    )
+    if not m:
+        raise ValueError(f"Could not parse AI metadata: {content[:300]}")
+    title = m.group(1).strip().split("\n", 1)[0].strip()
+    description = m.group(2).strip()
+    hashtags = [h.strip().lstrip("#") for h in re.split(r"[,\n]+", m.group(3)) if h.strip()]
+    return title, description, hashtags
+
+
+def _parse_section_blocks(content: str):
+    """Parse ### SECTION blocks (see _parse_meta_block for why plain text, not JSON)."""
+    sections = []
+    parts = re.split(r"###\s*SECTION\b", content, flags=re.IGNORECASE)
+    for block in parts:
+        block = block.strip().lstrip(":").strip()
+        if not block:
+            continue
+        m = re.search(
+            r"IDX:\s*(\d+)\s*"
+            r"WORDCOUNT:\s*(\d+)\s*"
+            r"TEXT:\s*(.*)",
+            block, re.DOTALL | re.IGNORECASE,
+        )
+        if not m:
+            continue
+        text = m.group(3).strip()
+        # If the model glued the next section on without a ### marker, cut it off.
+        nxt = re.search(r"\n\s*IDX:\s*\d+\s*WORDCOUNT:", text, re.IGNORECASE)
+        if nxt:
+            text = text[: nxt.start()].strip()
+        if not text:
+            continue
+        sections.append({
+            "idx": int(m.group(1)),
+            "word_count": int(m.group(2)),
+            "text": text,
+        })
+    return sections
+
+
 def _ai_generate_metadata(script: str, title: str):
     """Generate title/description/hashtags only — no sections. Used by the
     video-to-sections flow, where sections already come from Clipper's chapter
@@ -153,28 +225,19 @@ def _ai_generate_metadata(script: str, title: str):
 
     prompt = f"""Based on this video script (excerpted if long), generate YouTube metadata.
 
-Return ONLY a JSON object:
-{{
-  "title": "<compelling video title based on: '{title or 'auto-generate'}'>",
-  "description": "<YouTube description, 150-250 words, engaging>",
-  "hashtags": ["tag1", "tag2", ... up to 20 relevant tags without #]
-}}
+Respond with ONLY the following plain-text format, nothing else — no markdown, no JSON, no extra commentary:
+### META
+TITLE: <compelling video title based on: '{title or 'auto-generate'}'>
+DESCRIPTION: <YouTube description, 150-250 words, engaging>
+HASHTAGS: tag1, tag2, tag3 (3 to 20 relevant tags, comma-separated, no # prefix)
 
 SCRIPT:
-{script}
+{script}"""
 
-Return ONLY the JSON, no explanation."""
-
-    raw = _groq(prompt, system="You are a video production AI. Return only valid JSON.",
-                max_tokens=1000)
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not m:
-        raise ValueError("Could not parse AI response")
-    analysis = json.loads(m.group())
-    vid_title = analysis.get("title", title or "My Video")
-    description = analysis.get("description", "")
-    hashtags = analysis.get("hashtags", [])
-    return vid_title, description, hashtags
+    raw = _groq(prompt, system="You are a video production AI. Respond in the exact "
+                "plain-text format requested, nothing else.", max_tokens=1000)
+    vid_title, description, hashtags = _parse_meta_block(raw)
+    return vid_title or (title or "My Video"), description, hashtags
 
 
 def _audio_duration(path: str) -> float:
@@ -341,40 +404,38 @@ def run_generation(job_id: str, script: str, voice: str, title: str, n_sections:
         push({"phase": "analysing", "msg": "Analysing script…"})
         analysis_prompt = f"""Split this video script into exactly {n_sections} sections for a video.
 
-Return ONLY a JSON object:
-{{
-  "sections": [
-    {{"idx": 0, "text": "<script lines for this section>", "word_count": <integer>}},
-    ...exactly {n_sections} items...
-  ],
-  "title": "<compelling video title based on: '{title or 'auto-generate'}'>",
-  "description": "<YouTube description, 150-250 words, engaging>",
-  "hashtags": ["tag1", "tag2", ... up to 20 relevant tags without #]
-}}
+Respond with ONLY the following plain-text format, nothing else — no markdown, no JSON, no extra commentary:
+### META
+TITLE: <compelling video title based on: '{title or 'auto-generate'}'>
+DESCRIPTION: <YouTube description, 150-250 words, engaging>
+HASHTAGS: tag1, tag2, tag3 (3 to 20 relevant tags, comma-separated, no # prefix)
+### SECTION
+IDX: 0
+WORDCOUNT: <word count for this section's TEXT>
+TEXT:
+<script lines for this section>
+### SECTION
+IDX: 1
+WORDCOUNT: <word count for this section's TEXT>
+TEXT:
+<script lines for this section>
+(repeat for all {n_sections} sections, IDX running from 0 to {n_sections - 1},
+covering the entire script start to finish with no gaps)
 
-Split at natural paragraph or topic breaks. Cover the entire script.
-Estimate word_count for each section by counting the words in that section's text.
+Split at natural paragraph or topic breaks.
 
 SCRIPT:
-{script}
-
-Return ONLY the JSON, no explanation."""
+{script}"""
 
         raw = _groq(analysis_prompt,
-                    system="You are a video production AI. Return only valid JSON.",
-                    max_tokens=3000)
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not m:
-            raise ValueError("Could not parse AI response")
-        analysis = json.loads(m.group())
+                    system="You are a video production AI. Respond in the exact "
+                    "plain-text format requested, nothing else.", max_tokens=3000)
+        vid_title, description, hashtags = _parse_meta_block(raw)
+        vid_title = vid_title or (title or "My Video")
 
-        sections_raw = analysis.get("sections", [])
+        sections_raw = _parse_section_blocks(raw)
         if not sections_raw:
-            raise ValueError("No sections returned from AI")
-
-        vid_title   = analysis.get("title", title or "My Video")
-        description = analysis.get("description", "")
-        hashtags    = analysis.get("hashtags", [])
+            raise ValueError(f"No sections returned from AI: {raw[:300]}")
 
         # Build estimated timings from word counts (~140 wpm)
         total_words = sum(s.get("word_count", len(s.get("text","").split())) for s in sections_raw)

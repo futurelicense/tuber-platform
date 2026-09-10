@@ -17,13 +17,34 @@ class AIRequestError(RuntimeError):
     pass
 
 
+# Groq moved the free llama-3.x IDs to Enterprise-only; requests 404 with
+# model_not_found. Map them (and empty) to the current free-tier default so a
+# stale Render/dashboard AI_MODEL does not break Academy chat.
+_DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
+_RETIRED_GROQ_MODELS = frozenset(
+    {
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama3-8b-8192",
+        "llama3-70b-8192",
+    }
+)
+
+
+def _resolve_ai_model():
+    model = (os.environ.get("AI_MODEL") or _DEFAULT_AI_MODEL).strip()
+    if not model or model in _RETIRED_GROQ_MODELS:
+        return _DEFAULT_AI_MODEL
+    return model
+
+
 def ai_configured():
     return bool((os.environ.get("AI_KEY") or os.environ.get("HF_API_KEY") or "").strip())
 
 
 def ai_model_label():
-    model = (os.environ.get("AI_MODEL") or "llama-3.3-70b-versatile").strip()
-    short = model.split("/")[-1]
+    short = _resolve_ai_model().split("/")[-1]
     return f"Groq · {short}"
 
 
@@ -37,7 +58,7 @@ def chat_completion(messages, max_tokens=900, temperature=0.5, retries=3):
         os.environ.get("AI_ENDPOINT")
         or "https://api.groq.com/openai/v1/chat/completions"
     ).strip()
-    model = (os.environ.get("AI_MODEL") or "llama-3.3-70b-versatile").strip()
+    model = _resolve_ai_model()
 
     body = json.dumps(
         {

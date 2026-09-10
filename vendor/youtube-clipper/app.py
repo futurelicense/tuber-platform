@@ -662,7 +662,25 @@ def _youtube_upload_file(filepath, filename, title=None, privacy="private"):
 #   AI_ENDPOINT=https://router.huggingface.co/hf-inference/v1/chat/completions
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
-_AI_MODEL    = os.environ.get("AI_MODEL",    "openai/gpt-oss-120b")
+_DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
+# Groq free/developer keys no longer serve these — they 404 model_not_found
+# (llama-3.x is Enterprise-only). Remap at call time so a stale Render
+# AI_MODEL=llama-3.1-8b-instant does not break jobs after redeploy.
+_RETIRED_GROQ_MODELS = frozenset({
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+})
+
+
+def _resolve_ai_model():
+    model = (os.environ.get("AI_MODEL") or _DEFAULT_AI_MODEL).strip()
+    if not model or model in _RETIRED_GROQ_MODELS:
+        return _DEFAULT_AI_MODEL
+    return model
+
 
 # Overflow fallback via Hugging Face's Inference Providers router. HF free
 # credits are far too small to be a workhorse, so this only fires when the
@@ -851,7 +869,7 @@ Return ONLY a valid JSON array, no explanation, no markdown:
 [{{"start": <int>, "end": <int>, "title": "<hook title under 8 words — write it like a viral headline>", "reason": "<one sentence on exactly why this moment is shareable>"}}]"""
 
     body = json.dumps({
-        "model": _AI_MODEL,
+        "model": _resolve_ai_model(),
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 2048,
         "temperature": 0.3,
@@ -928,7 +946,7 @@ def _ai_chat_completion(prompt, max_tokens, retries=3):
         raise RuntimeError("Set AI_KEY in .env (get a free key at console.groq.com)")
 
     body = json.dumps({
-        "model": _AI_MODEL,
+        "model": _resolve_ai_model(),
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
         "temperature": 0.2,
