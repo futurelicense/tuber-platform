@@ -1150,16 +1150,38 @@ def upload_music(job_id):
     return jsonify({"ok": True, "filename": f.filename})
 
 
+def _equal_sections(n: int, duration: float, texts: list | None = None) -> list:
+    """Split narration into n equal timed sections (optional per-section text)."""
+    n = max(2, min(20, int(n)))
+    duration = max(float(duration or 0), 1.0)
+    step = duration / n
+    out = []
+    for i in range(n):
+        text = ""
+        if texts and i < len(texts) and isinstance(texts[i], str):
+            text = texts[i].strip()
+        if not text:
+            text = f"Section {i + 1}"
+        out.append({
+            "idx": i,
+            "text": text,
+            "start": round(i * step, 2),
+            "end": round(duration if i == n - 1 else (i + 1) * step, 2),
+            "media": None,
+            "media_ext": None,
+        })
+    return out
+
+
 @app.route("/load-audio", methods=["POST"])
 def load_audio():
-    """Load or replace narration audio in the Audio & Sections column.
+    """Load narration audio and build section cards.
 
-    Two modes:
-      1. Replace — form field job_id for an existing audio_ready (or later)
-         job: swap narration.mp3 and rescale section timings. Sync response.
-      2. Bootstrap — no job_id (or unknown): requires a script; creates a job,
-         AI-splits into sections, uses the uploaded file instead of TTS.
-         Returns job_id; client streams /progress like Generate Audio.
+    Modes (form field ``mode``):
+      replace — keep existing sections; swap narration and rescale timings.
+      split   — (default) load audio and generate ``sections`` count of cards.
+                Script optional: with a long enough script, AI-splits text into
+                that many sections; otherwise equal time slices.
     """
     if "file" not in request.files:
         return jsonify({"error": "No file"}), 400
@@ -1167,22 +1189,30 @@ def load_audio():
     if not f or not f.filename:
         return jsonify({"error": "No file"}), 400
 
+    mode = (request.form.get("mode") or "split").strip().lower()
     job_id = (request.form.get("job_id") or "").strip()
     job = _get_job(job_id) if job_id else None
+    script = (request.form.get("script") or "").strip()
+    voice = request.form.get("voice") or "en-US-GuyNeural"
+    title = (request.form.get("title") or "").strip()
+    try:
+        n_sections = max(2, min(20, int(request.form.get("sections") or 6)))
+    except (TypeError, ValueError):
+        n_sections = 6
 
-    # ── Mode 1: replace narration on an existing job ──────────────────
-    if job and job.get("sections"):
+    # ── Replace narration only (keep section count / media) ───────────
+    if mode == "replace":
+        if not job or not job.get("sections"):
+            return jsonify({"error": "No existing job to replace audio on"}), 400
         if job.get("status") == "running":
             return jsonify({"error": "Wait for the current generation to finish"}), 400
         try:
-            job_dir = os.path.join(OUTPUT_DIR, job_id)
-            audio_path = _save_narration_upload(f, job_dir)
+            audio_path = _save_narration_upload(f, os.path.join(OUTPUT_DIR, job_id))
         except Exception as e:
             return jsonify({"error": str(e)}), 400
         job["audio_path"] = audio_path
         actual_dur = _audio_duration(audio_path)
         _rescale_sections(job["sections"], actual_dur)
-        # Keep assemble-able even if they previously finished a video.
         if job.get("status") in ("done", "error_assembly", "audio_ready", None):
             job["status"] = "audio_ready"
         _persist_job(job_id)
@@ -1197,50 +1227,75 @@ def load_audio():
             "hashtags": job.get("hashtags") or [],
         })
 
-    # ── Mode 2: bootstrap a new job from script + uploaded audio ──────
-    script = (request.form.get("script") or "").strip()
-    if not script:
-        return jsonify({
-            "error": "Paste a script first (or generate audio so sections exist, then replace).",
-        }), 400
-    if len(script) < 20:
-        return jsonify({"error": "Script too short"}), 400
+    # ── Split: load audio + generate N section cards ──────────────────
+    # Prefer AI text split when a real script is present; otherwise equal slices.
+    use_ai = len(script) >= 20
 
-    voice = request.form.get("voice") or "en-US-GuyNeural"
-    title = (request.form.get("title") or "").strip()
-    try:
-        n_sections = max(2, min(20, int(request.form.get("sections") or 6)))
-    except (TypeError, ValueError):
-        n_sections = 6
+    if use_ai:
+        job_id = uuid.uuid4().hex
+        job_dir = os.path.join(OUTPUT_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+        try:
+            ext = os.path.splitext(f.filename)[1].lower() or ".mp3"
+            if ext not in _AUDIO_UPLOAD_EXTS:
+                return jsonify({"error": f"Unsupported audio format: {ext}"}), 400
+            staged = os.path.join(job_dir, f"_upload_narration{ext}")
+            f.save(staged)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
 
+        JOBS[job_id] = {
+            "status": "running",
+            "queue": queue.Queue(),
+            "script": script,
+            "voice": voice,
+            "sections": [],
+            "audio_path": None,
+            "video_path": None,
+        }
+        threading.Thread(
+            target=run_generation,
+            args=(job_id, script, voice, title, n_sections, staged),
+            daemon=True,
+        ).start()
+        return jsonify({"ok": True, "mode": "bootstrap", "job_id": job_id,
+                        "sections_requested": n_sections})
+
+    # No script — sync equal-duration sections from the uploaded audio.
     job_id = uuid.uuid4().hex
     job_dir = os.path.join(OUTPUT_DIR, job_id)
-    os.makedirs(job_dir, exist_ok=True)
     try:
-        # Stage raw upload; run_generation converts it to narration.mp3.
-        ext = os.path.splitext(f.filename)[1].lower() or ".mp3"
-        if ext not in _AUDIO_UPLOAD_EXTS:
-            return jsonify({"error": f"Unsupported audio format: {ext}"}), 400
-        staged = os.path.join(job_dir, f"_upload_narration{ext}")
-        f.save(staged)
+        audio_path = _save_narration_upload(f, job_dir)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-
+    actual_dur = _audio_duration(audio_path)
+    if actual_dur <= 0:
+        return jsonify({"error": "Could not read audio duration"}), 400
+    sections = _equal_sections(n_sections, actual_dur)
+    vid_title = title or "My Video"
     JOBS[job_id] = {
-        "status": "running",
+        "status": "audio_ready",
         "queue": queue.Queue(),
         "script": script,
         "voice": voice,
-        "sections": [],
-        "audio_path": None,
+        "title": vid_title,
+        "description": "",
+        "hashtags": [],
+        "sections": sections,
+        "audio_path": audio_path,
         "video_path": None,
     }
-    threading.Thread(
-        target=run_generation,
-        args=(job_id, script, voice, title, n_sections, staged),
-        daemon=True,
-    ).start()
-    return jsonify({"ok": True, "mode": "bootstrap", "job_id": job_id})
+    _persist_job(job_id)
+    return jsonify({
+        "ok": True,
+        "mode": "split",
+        "job_id": job_id,
+        "audio_dur": round(actual_dur, 2),
+        "sections": sections,
+        "title": vid_title,
+        "description": "",
+        "hashtags": [],
+    })
 
 
 @app.route("/thumbnail/<job_id>", methods=["POST"])
@@ -1365,7 +1420,11 @@ h1{font-size:20px;font-weight:700;letter-spacing:-.02em}
 .col2-audio{flex:none;padding:12px;border-bottom:1px solid var(--line)}
 .col2-audio .audio-player-wrap{display:none}
 .col2-audio.has-audio .audio-player-wrap{display:block}
-.col2-audio.has-audio .audio-load{display:none}
+.col2-audio.has-audio .audio-load-panel{display:none}
+.audio-load-panel{display:flex;flex-direction:column;gap:8px}
+.audio-load-row{display:flex;align-items:center;gap:8px}
+.audio-load-row label{margin:0;flex:none}
+.audio-load-row select{flex:1;margin:0;padding:7px 26px 7px 10px;font-size:12px}
 .audio-load{border:1.5px dashed var(--lineb);border-radius:8px;padding:14px 12px;
   font-size:12px;color:var(--faint);cursor:pointer;text-align:center;
   transition:border-color .15s,background .15s;line-height:1.5}
@@ -1645,22 +1704,44 @@ video{width:100%;border-radius:8px;background:#000;display:block}
 
   <!-- fixed audio + timeline zone — always visible so Load audio is available -->
   <div class="col2-audio" id="audioArea">
-    <div class="audio-load" id="audioLoad"
-         onclick="$('audioFile').click()"
-         ondragover="event.preventDefault();this.classList.add('drag-over')"
-         ondragleave="this.classList.remove('drag-over')"
-         ondrop="onAudioLoadDrop(event)">
-      <input type="file" id="audioFile" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac"
-             onchange="loadNarrationAudio(this.files[0])">
-      &#128266; Load narration audio<br>
-      <span style="color:var(--faint);font-size:10px">MP3 · WAV · M4A · OGG — or use Generate Audio</span>
+    <div class="audio-load-panel" id="audioLoadPanel">
+      <div class="audio-load-row">
+        <label for="loadSections">Sections</label>
+        <select id="loadSections" title="How many section cards to generate for this audio">
+          <option value="3">3 sections</option>
+          <option value="4">4 sections</option>
+          <option value="5">5 sections</option>
+          <option value="6" selected>6 sections</option>
+          <option value="7">7 sections</option>
+          <option value="8">8 sections</option>
+          <option value="9">9 sections</option>
+          <option value="10">10 sections</option>
+          <option value="12">12 sections</option>
+          <option value="14">14 sections</option>
+          <option value="16">16 sections</option>
+          <option value="18">18 sections</option>
+          <option value="20">20 sections</option>
+        </select>
+      </div>
+      <div class="audio-load" id="audioLoad"
+           onclick="$('audioFile').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="onAudioLoadDrop(event)">
+        <input type="file" id="audioFile" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac"
+               onchange="loadNarrationAudio(this.files[0])">
+        &#128266; Load narration audio<br>
+        <span style="color:var(--faint);font-size:10px">Pick section count above, then drop MP3/WAV/M4A</span>
+      </div>
     </div>
     <div class="audio-player-wrap" id="audioPlayerWrap">
       <audio id="audioPlayer" controls></audio>
       <div class="timeline" id="timeline"></div>
       <a class="dl-btn" id="audioDl" href="#" download style="font-size:11px">&#8595; Download MP3</a>
       <button type="button" class="audio-replace" id="audioReplaceBtn"
-              onclick="$('audioFile').click()">&#8635; Replace audio</button>
+              onclick="$('replaceAudioFile').click()">&#8635; Replace audio</button>
+      <input type="file" id="replaceAudioFile" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac"
+             onchange="replaceNarrationAudio(this.files[0])" style="display:none">
     </div>
     <div id="prefillNote" style="display:none;font-size:11px;color:var(--faint);margin-top:6px"></div>
   </div>
@@ -1668,7 +1749,7 @@ video{width:100%;border-radius:8px;background:#000;display:block}
   <!-- scrollable section cards -->
   <div class="col2-sections" id="sectionsArea">
     <div class="placeholder" id="sec-placeholder">
-      Generate or load audio first.<br>Your section cards will appear here.
+      Load audio and choose a section count,<br>or generate audio from a script.
     </div>
   </div>
 
@@ -1863,6 +1944,8 @@ function restoreFormFromJob(d) {
     const n = String(d.sections.length);
     const sel = $('nsections');
     if ([...sel.options].some(o => o.value === n)) sel.value = n;
+    const loadSel = $('loadSections');
+    if (loadSel && [...loadSel.options].some(o => o.value === n)) loadSel.value = n;
   }
   if (d.has_music) {
     _musicReady = true;
@@ -1990,6 +2073,14 @@ function onAudioReady(jobId, data) {
 }
 
 // ── load / replace narration audio ───────────────────────────────────
+// Keep Script-column and Audio-column section counts in sync.
+(function syncSectionSelects(){
+  const a = $('nsections'), b = $('loadSections');
+  if (!a || !b) return;
+  a.addEventListener('change', () => { b.value = a.value; });
+  b.addEventListener('change', () => { a.value = b.value; });
+})();
+
 function onAudioLoadDrop(e) {
   e.preventDefault();
   $('audioLoad').classList.remove('drag-over');
@@ -1997,36 +2088,52 @@ function onAudioLoadDrop(e) {
   if (file) loadNarrationAudio(file);
 }
 
-async function loadNarrationAudio(file) {
-  if (!file) return;
-  const script = $('script').value.trim();
-  // Replace mode needs an existing job with sections; bootstrap needs a script.
-  if (!_jobId && !script) {
-    alert('Paste your script first, or generate audio so sections exist.');
-    return;
-  }
-
+function _audioUploadForm(file, mode) {
   const fd = new FormData();
   fd.append('file', file);
-  if (_jobId) fd.append('job_id', _jobId);
-  fd.append('script', script);
+  fd.append('mode', mode);
+  fd.append('script', $('script').value.trim());
   fd.append('voice', $('voice').value);
   fd.append('title', $('vidTitle').value.trim());
-  fd.append('sections', $('nsections').value);
+  fd.append('sections', ($('loadSections') || $('nsections')).value);
+  if (mode === 'replace' && _jobId) fd.append('job_id', _jobId);
+  return fd;
+}
 
+function _beginAudioProgress() {
   $('genBtn').disabled = true;
   $('progressWrap').classList.add('show');
   $('errMsg').classList.remove('show');
   $('progressBar').classList.add('indet');
   buildGenSteps();
   markStep('audio');
+}
 
+async function loadNarrationAudio(file) {
+  if (!file) return;
+  // Always split into the selected section count — script is optional.
+  clearRememberedJob();
+  _jobId = null;
+  _sections = [];
+  _audioDur = 0;
+  _hashtags = [];
+  $('audioArea').classList.remove('has-audio');
+  const box = $('sectionsArea');
+  box.innerHTML = '';
+  const ph = document.createElement('div');
+  ph.className = 'placeholder';
+  ph.id = 'sec-placeholder';
+  ph.style.display = 'block';
+  ph.innerHTML = 'Building sections…';
+  box.appendChild(ph);
+
+  _beginAudioProgress();
   try {
-    const r = await fetch('/load-audio', {method:'POST', body: fd});
+    const r = await fetch('/load-audio', {method:'POST', body: _audioUploadForm(file, 'split')});
     const d = await r.json();
     if (d.error) { showErr(d.error); return; }
 
-    if (d.mode === 'replace') {
+    if (d.mode === 'split' || d.mode === 'replace') {
       markStep('analysing', true);
       markStep('audio', true);
       $('progressBar').classList.remove('indet');
@@ -2036,25 +2143,39 @@ async function loadNarrationAudio(file) {
       return;
     }
 
-    // bootstrap — same SSE path as Generate Audio
+    // bootstrap with script — AI sectioning via SSE
     rememberJob(d.job_id);
-    _sections = [];
-    _audioDur = 0;
-    _hashtags = [];
-    $('audioArea').classList.remove('has-audio');
-    const _ph = $('sec-placeholder');
-    $('sectionsArea').innerHTML = '';
-    if (_ph) {
-      _ph.style.display = 'block';
-      $('sectionsArea').appendChild(_ph);
-    }
     markStep('analysing');
     streamGenProgress(d.job_id);
   } catch(e) {
     showErr('Audio load failed: ' + e.message);
   } finally {
-    // Allow picking the same file again after a failed/success upload.
     const inp = $('audioFile');
+    if (inp) inp.value = '';
+  }
+}
+
+async function replaceNarrationAudio(file) {
+  if (!file) return;
+  if (!_jobId) {
+    // No job yet — treat as a fresh load with the selected section count.
+    return loadNarrationAudio(file);
+  }
+  _beginAudioProgress();
+  try {
+    const r = await fetch('/load-audio', {method:'POST', body: _audioUploadForm(file, 'replace')});
+    const d = await r.json();
+    if (d.error) { showErr(d.error); return; }
+    markStep('analysing', true);
+    markStep('audio', true);
+    $('progressBar').classList.remove('indet');
+    $('progressBar').querySelector('i').style.width = '100%';
+    $('genBtn').disabled = false;
+    onAudioReady(d.job_id, d);
+  } catch(e) {
+    showErr('Audio replace failed: ' + e.message);
+  } finally {
+    const inp = $('replaceAudioFile');
     if (inp) inp.value = '';
   }
 }
