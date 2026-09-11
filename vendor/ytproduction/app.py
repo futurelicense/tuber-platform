@@ -139,19 +139,19 @@ def _persist_job(job_id: str) -> None:
 
 def _hydrate_job(job_id: str):
     """Load a previously persisted job into JOBS. Returns the job dict or None."""
-    if not job_id or not re.fullmatch(r"[0-9a-f]{32}", job_id):
+    if not job_id or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
         return None
+    job_id = job_id.lower()
     path = _job_state_path(job_id)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as e:
-        print(f"  [ytprod] hydrate failed for {job_id}: {e}", flush=True)
-        return None
-
     job_dir = _job_dir(job_id)
+
+    data = None
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"  [ytprod] hydrate failed for {job_id}: {e}", flush=True)
 
     def _abs(name):
         if not name:
@@ -160,6 +160,56 @@ def _hydrate_job(job_id: str):
             return name if os.path.exists(name) else None
         cand = os.path.join(job_dir, name)
         return cand if os.path.exists(cand) else None
+
+    # No state.json — still recover if narration exists so uploads/assemble
+    # keep working after a worker recycle (audio URL can succeed without state).
+    if data is None:
+        audio_path = _abs("narration.mp3")
+        if not audio_path:
+            return None
+        actual_dur = _audio_duration(audio_path) or 1.0
+        # Infer section count from existing section_* media files, else 6.
+        media_idxs = set()
+        try:
+            for name in os.listdir(job_dir):
+                m = re.match(r"section_(\d+)", name)
+                if m:
+                    media_idxs.add(int(m.group(1)))
+        except OSError:
+            pass
+        n = max(media_idxs) + 1 if media_idxs else 6
+        n = max(2, min(20, n))
+        sections = _equal_sections(n, actual_dur)
+        for i in sorted(media_idxs):
+            if i >= len(sections):
+                continue
+            for name in os.listdir(job_dir):
+                if name.startswith(f"section_{i:03d}") and not name.endswith(".json"):
+                    sections[i]["media"] = os.path.join(job_dir, name)
+                    sections[i]["media_ext"] = os.path.splitext(name)[1].lower()
+                    break
+        job = {
+            "status": "audio_ready",
+            "queue": queue.Queue(),
+            "script": "",
+            "voice": "en-US-GuyNeural",
+            "title": "My Video",
+            "description": "",
+            "hashtags": [],
+            "sections": sections,
+            "audio_path": audio_path,
+            "video_path": _abs("video.mp4"),
+            "music_path": None,
+            "chapters": None,
+            "error_message": None,
+            "xfade": True,
+            "music_vol": 0.15,
+            "clip_prefill": None,
+        }
+        JOBS[job_id] = job
+        _persist_job(job_id)
+        print(f"  [ytprod] recovered job {job_id} from narration only ({n} sections)", flush=True)
+        return job
 
     sections = []
     for s in data.get("sections") or []:
@@ -182,6 +232,10 @@ def _hydrate_job(job_id: str):
     # treat mid-flight statuses as the last durable checkpoint.
     if status in ("running", "assembling"):
         status = "audio_ready" if audio_path else "error"
+
+    if not sections and audio_path:
+        actual_dur = _audio_duration(audio_path) or 1.0
+        sections = _equal_sections(6, actual_dur)
 
     job = {
         "status": status,
@@ -207,11 +261,43 @@ def _hydrate_job(job_id: str):
 
 
 def _get_job(job_id: str):
-    """In-memory job, or hydrate from disk state.json if present."""
+    """In-memory job, or hydrate/recover from disk if present."""
+    if not job_id:
+        return None
+    job_id = job_id.strip().lower()
     job = JOBS.get(job_id)
     if job:
         return job
     return _hydrate_job(job_id)
+
+
+def _ensure_section_slot(job: dict, idx: int, audio_dur: float | None = None) -> None:
+    """Grow job['sections'] so idx is valid (upload to §N must not no-op)."""
+    sections = job.setdefault("sections", [])
+    if idx < len(sections):
+        return
+    if audio_dur is None:
+        ap = job.get("audio_path")
+        audio_dur = _audio_duration(ap) if ap and os.path.exists(ap) else 0.0
+    audio_dur = max(float(audio_dur or 0), 1.0)
+    while len(sections) <= idx:
+        i = len(sections)
+        # Append a short slot at the end; user can retune times in the UI.
+        start = sections[-1]["end"] if sections else 0.0
+        end = min(audio_dur, start + max(audio_dur / max(idx + 1, 1), 2.0))
+        if end <= start:
+            end = audio_dur
+        sections.append({
+            "idx": i,
+            "text": f"Section {i + 1}",
+            "start": round(start, 2),
+            "end": round(end, 2),
+            "media": None,
+            "media_ext": None,
+        })
+    sections[-1]["end"] = round(audio_dur, 2)
+    for i, s in enumerate(sections):
+        s["idx"] = i
 
 def _make_groq_session() -> _requests.Session:
     s = _requests.Session()
@@ -968,6 +1054,7 @@ def generate():
         "audio_path": None,
         "video_path": None,
     }
+    _persist_job(job_id)
     threading.Thread(target=run_generation,
                      args=(job_id, script, voice, title, n_sections), daemon=True).start()
     return jsonify({"job_id": job_id})
@@ -997,6 +1084,7 @@ def _start_generation_from_sections(sections_text, voice, title, description, ha
         "audio_path": None,
         "video_path": None,
     }
+    _persist_job(job_id)
     threading.Thread(
         target=run_generation_from_sections,
         args=(job_id, sections_text, script_for_tts, voice, title or "My Video", description, hashtags),
@@ -1081,22 +1169,28 @@ def progress(job_id):
 
 @app.route("/upload-section/<job_id>/<int:idx>", methods=["POST"])
 def upload_section(job_id, idx):
+    job_id = (job_id or "").strip().lower()
     job = _get_job(job_id)
     if not job:
-        return jsonify({"error": "Job not found"}), 404
+        return jsonify({"error": "Job not found — reload the page or load audio again."}), 404
     if "file" not in request.files:
         return jsonify({"error": "No file"}), 400
     f   = request.files["file"]
-    ext = os.path.splitext(f.filename)[1].lower()
+    ext = os.path.splitext(f.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".webm"):
         return jsonify({"error": "Unsupported file type"}), 400
     job_dir    = os.path.join(OUTPUT_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     media_path = os.path.join(job_dir, f"section_{idx:03d}{ext}")
     f.save(media_path)
+    # Grow section list if the UI asked for a higher index than we stored
+    # (e.g. recovered job with fewer slots than the open page).
+    _ensure_section_slot(job, idx)
     if 0 <= idx < len(job["sections"]):
         job["sections"][idx]["media"]     = media_path
         job["sections"][idx]["media_ext"] = ext
+    if job.get("status") in ("done", "error_assembly", None):
+        job["status"] = "audio_ready"
     _persist_job(job_id)
     is_video = ext in (".mp4", ".mov", ".webm")
     return jsonify({
@@ -1253,6 +1347,7 @@ def load_audio():
             "audio_path": None,
             "video_path": None,
         }
+        _persist_job(job_id)
         threading.Thread(
             target=run_generation,
             args=(job_id, script, voice, title, n_sections, staged),
@@ -1539,7 +1634,8 @@ audio{width:100%;border-radius:7px;outline:none;margin-top:5px;margin-bottom:8px
 .sec-upload{padding:8px 10px}
 .drop-zone{border:1.5px dashed var(--lineb);border-radius:7px;
   padding:12px 8px;text-align:center;color:var(--faint);font-size:11px;
-  cursor:pointer;transition:border-color .15s,background .15s;line-height:1.6}
+  cursor:pointer;transition:border-color .15s,background .15s;line-height:1.6;
+  display:block;width:100%;box-sizing:border-box}
 .drop-zone:hover,.drop-zone.drag-over{border-color:var(--amber);
   background:rgba(255,177,60,.06);color:var(--amber)}
 .drop-zone input[type=file]{display:none}
@@ -1724,7 +1820,7 @@ video{width:100%;border-radius:8px;background:#000;display:block}
         </select>
       </div>
       <div class="audio-load" id="audioLoad"
-           onclick="$('audioFile').click()"
+           onclick="var el=$('audioFile'); if(el) el.click()"
            ondragover="event.preventDefault();this.classList.add('drag-over')"
            ondragleave="this.classList.remove('drag-over')"
            ondrop="onAudioLoadDrop(event)">
@@ -1739,7 +1835,7 @@ video{width:100%;border-radius:8px;background:#000;display:block}
       <div class="timeline" id="timeline"></div>
       <a class="dl-btn" id="audioDl" href="#" download style="font-size:11px">&#8595; Download MP3</a>
       <button type="button" class="audio-replace" id="audioReplaceBtn"
-              onclick="$('replaceAudioFile').click()">&#8635; Replace audio</button>
+              onclick="var el=$('replaceAudioFile'); if(el) el.click()">&#8635; Replace audio</button>
       <input type="file" id="replaceAudioFile" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac"
              onchange="replaceNarrationAudio(this.files[0])" style="display:none">
     </div>
@@ -1838,6 +1934,9 @@ video{width:100%;border-radius:8px;background:#000;display:block}
 
 <script>
 const $ = id => document.getElementById(id);
+// Inline onclick handlers resolve against window — expose $ so
+// $('fi-0').click() etc. work reliably (const alone is not on window).
+window.$ = $;
 
 // ── section colours ─────────────────────────────────────────────────
 const SEC_COLS = [
@@ -2281,8 +2380,7 @@ function buildSectionCard(jobId, s) {
   const previewUrl = `/result/${jobId}/${mediaFile}`;
   const uploadBlock = s.media_ready
     ? sectionPreviewHtml(previewUrl, isVideo, s.idx, jobId)
-    : `<div class="drop-zone" id="dz-${s.idx}"
-       onclick="$('fi-${s.idx}').click()"
+    : `<label class="drop-zone" id="dz-${s.idx}" for="fi-${s.idx}"
        ondragover="dzDragOver(event,${s.idx})"
        ondragleave="dzDragLeave(${s.idx})"
        ondrop="dzDrop(event,${s.idx},'${jobId}')">
@@ -2290,7 +2388,7 @@ function buildSectionCard(jobId, s) {
            onchange="uploadSection(${s.idx},'${jobId}',this.files[0])">
     &#128247; Drop image or video here<br>
     <span style="color:var(--faint);font-size:10px">JPG · PNG · MP4 · MOV · WebM</span>
-  </div>
+  </label>
   <div class="upload-err" id="ue-${s.idx}"></div>`;
   card.innerHTML = `
 <div class="sec-head">
@@ -2360,16 +2458,19 @@ async function uploadSection(idx, jobId, file) {
   if (!file) return;
   const dz  = $('dz-'+idx);
   const err = $('ue-'+idx);
-  dz.style.opacity = '.5';
-  dz.textContent   = 'Uploading…';
-  err.classList.remove('show');
+  if (dz) dz.classList.add('drag-over');
+  if (err) { err.textContent = 'Uploading…'; err.classList.add('show'); }
 
   try {
     const fd = new FormData();
     fd.append('file', file);
     const r   = await fetch(`/upload-section/${jobId}/${idx}`, {method:'POST', body:fd});
-    const res = await r.json();
-    if (res.error) throw new Error(res.error);
+    let res;
+    try { res = await r.json(); }
+    catch (_) { throw new Error(r.status === 404
+      ? 'Job not found — reload the page, then try again.'
+      : `Upload failed (HTTP ${r.status})`); }
+    if (!r.ok || res.error) throw new Error(res.error || `Upload failed (HTTP ${r.status})`);
 
     // show preview
     const su = $('su-'+idx);
@@ -2378,14 +2479,17 @@ async function uploadSection(idx, jobId, file) {
 
     $('sec-card-'+idx).style.borderColor = '#059669';
     _sections[idx].media_ready = true;
-    // Store ext from the preview URL for thumb picker
-    const previewExt = res.preview.match(/\.[^.?]+(?:\?|$)/);
+    _sections[idx].dismissed  = false;
+    const previewExt = (res.preview || '').match(/\.[^.?]+(?:\?|$)/);
     if (previewExt) _sections[idx].ext = previewExt[0].replace('?','');
+    if (err) err.classList.remove('show');
   } catch(e) {
-    dz.style.opacity = '1';
-    dz.innerHTML = `&#128247; Drop image or video here<br><span style="color:var(--faint);font-size:10px">JPG · PNG · MP4 · MOV · WebM</span>`;
-    err.textContent = 'Upload failed: '+e.message;
-    err.classList.add('show');
+    resetSection(idx, jobId);
+    const err2 = $('ue-'+idx);
+    if (err2) {
+      err2.textContent = 'Upload failed: '+e.message;
+      err2.classList.add('show');
+    }
   }
 }
 
@@ -2394,8 +2498,7 @@ function resetSection(idx, jobId) {
   _sections[idx].dismissed   = true; // stops pollClipPrefill re-filling this card
   const su = $('su-'+idx);
   su.innerHTML = `
-<div class="drop-zone" id="dz-${idx}"
-     onclick="$('fi-${idx}').click()"
+<label class="drop-zone" id="dz-${idx}" for="fi-${idx}"
      ondragover="dzDragOver(event,${idx})"
      ondragleave="dzDragLeave(${idx})"
      ondrop="dzDrop(event,${idx},'${jobId}')">
@@ -2403,7 +2506,7 @@ function resetSection(idx, jobId) {
          onchange="uploadSection(${idx},'${jobId}',this.files[0])">
   &#128247; Drop image or video here<br>
   <span style="color:var(--faint);font-size:10px">JPG · PNG · MP4 · MOV · WebM</span>
-</div>
+</label>
 <div class="upload-err" id="ue-${idx}"></div>`;
   $('sec-card-'+idx).style.borderColor = '';
 }
