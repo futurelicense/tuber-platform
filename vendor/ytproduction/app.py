@@ -79,6 +79,140 @@ app = Flask(__name__)
 def _push(q, data: dict):
     q.put(json.dumps(data))
 
+
+_JOB_PERSIST_KEYS = (
+    "status", "script", "voice", "title", "description", "hashtags",
+    "sections", "chapters", "error_message", "xfade", "music_vol",
+    "clip_prefill",
+)
+
+
+def _job_dir(job_id: str) -> str:
+    return os.path.join(OUTPUT_DIR, job_id)
+
+
+def _job_state_path(job_id: str) -> str:
+    return os.path.join(_job_dir(job_id), "state.json")
+
+
+def _persist_job(job_id: str) -> None:
+    """Write a JSON snapshot so /produce can resume after a browser refresh
+    (and after a process restart, as long as OUTPUT_DIR is intact).
+    Queues are omitted — they are rebuilt empty on hydrate.
+    """
+    job = JOBS.get(job_id)
+    if not job:
+        return
+    job_dir = _job_dir(job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    def _rel(path):
+        if not path:
+            return None
+        # Prefer basename so the snapshot is portable within OUTPUT_DIR.
+        if os.path.isabs(path) and path.startswith(job_dir + os.sep):
+            return os.path.basename(path)
+        return os.path.basename(path) if os.path.dirname(path) == job_dir else path
+
+    sections = []
+    for s in job.get("sections") or []:
+        sec = dict(s)
+        if sec.get("media"):
+            sec["media"] = _rel(sec["media"])
+        sections.append(sec)
+
+    payload = {k: job.get(k) for k in _JOB_PERSIST_KEYS}
+    payload["sections"] = sections
+    payload["audio_file"] = _rel(job.get("audio_path")) or (
+        "narration.mp3" if os.path.exists(os.path.join(job_dir, "narration.mp3")) else None
+    )
+    payload["video_file"] = _rel(job.get("video_path")) or (
+        "video.mp4" if os.path.exists(os.path.join(job_dir, "video.mp4")) else None
+    )
+    payload["music_file"] = _rel(job.get("music_path"))
+    try:
+        with open(_job_state_path(job_id), "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"  [ytprod] persist failed for {job_id}: {e}", flush=True)
+
+
+def _hydrate_job(job_id: str):
+    """Load a previously persisted job into JOBS. Returns the job dict or None."""
+    if not job_id or not re.fullmatch(r"[0-9a-f]{32}", job_id):
+        return None
+    path = _job_state_path(job_id)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"  [ytprod] hydrate failed for {job_id}: {e}", flush=True)
+        return None
+
+    job_dir = _job_dir(job_id)
+
+    def _abs(name):
+        if not name:
+            return None
+        if os.path.isabs(name):
+            return name if os.path.exists(name) else None
+        cand = os.path.join(job_dir, name)
+        return cand if os.path.exists(cand) else None
+
+    sections = []
+    for s in data.get("sections") or []:
+        sec = dict(s)
+        media = _abs(sec.get("media"))
+        if media:
+            sec["media"] = media
+            if not sec.get("media_ext"):
+                sec["media_ext"] = os.path.splitext(media)[1].lower()
+        else:
+            sec["media"] = None
+        sections.append(sec)
+
+    audio_path = _abs(data.get("audio_file")) or _abs("narration.mp3")
+    video_path = _abs(data.get("video_file")) or _abs("video.mp4")
+    music_path = _abs(data.get("music_file"))
+
+    status = data.get("status") or "audio_ready"
+    # A hydrated job never has a live SSE queue from the prior process —
+    # treat mid-flight statuses as the last durable checkpoint.
+    if status in ("running", "assembling"):
+        status = "audio_ready" if audio_path else "error"
+
+    job = {
+        "status": status,
+        "queue": queue.Queue(),
+        "script": data.get("script") or "",
+        "voice": data.get("voice") or "en-US-GuyNeural",
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "hashtags": data.get("hashtags") or [],
+        "sections": sections,
+        "audio_path": audio_path,
+        "video_path": video_path,
+        "music_path": music_path,
+        "chapters": data.get("chapters"),
+        "error_message": data.get("error_message"),
+        "xfade": data.get("xfade", True),
+        "music_vol": data.get("music_vol", 0.15),
+        "clip_prefill": data.get("clip_prefill"),
+    }
+    JOBS[job_id] = job
+    print(f"  [ytprod] hydrated job {job_id} ({status})", flush=True)
+    return job
+
+
+def _get_job(job_id: str):
+    """In-memory job, or hydrate from disk state.json if present."""
+    job = JOBS.get(job_id)
+    if job:
+        return job
+    return _hydrate_job(job_id)
+
 def _make_groq_session() -> _requests.Session:
     s = _requests.Session()
     # Retry on connection errors and 5xx; backoff 1s, 2s, 4s
@@ -257,6 +391,57 @@ def _audio_duration(path: str) -> float:
         pass
     return 0.0
 
+
+def _rescale_sections(sections: list, actual_dur: float) -> None:
+    """Stretch/shrink section start/end to match the real narration length."""
+    if actual_dur <= 0 or not sections:
+        return
+    est_total = sections[-1].get("end") or 0
+    if est_total <= 0:
+        # Equal slices when timings were never estimated (e.g. empty replace).
+        n = len(sections)
+        step = actual_dur / n
+        for i, s in enumerate(sections):
+            s["start"] = round(i * step, 2)
+            s["end"] = round((i + 1) * step, 2)
+        sections[-1]["end"] = round(actual_dur, 2)
+        return
+    ratio = actual_dur / est_total
+    for s in sections:
+        s["start"] = round(s["start"] * ratio, 2)
+        s["end"] = round(s["end"] * ratio, 2)
+    sections[-1]["end"] = round(actual_dur, 2)
+
+
+_AUDIO_UPLOAD_EXTS = (".mp3", ".wav", ".aac", ".m4a", ".ogg", ".flac", ".wma")
+
+
+def _save_narration_upload(file_storage, job_dir: str) -> str:
+    """Persist an uploaded narration file as narration.mp3 (ffmpeg convert/copy)."""
+    os.makedirs(job_dir, exist_ok=True)
+    orig_name = file_storage.filename or "upload.mp3"
+    ext = os.path.splitext(orig_name)[1].lower() or ".mp3"
+    if ext not in _AUDIO_UPLOAD_EXTS:
+        raise ValueError(f"Unsupported audio format: {ext}")
+    raw_path = os.path.join(job_dir, f"_upload_narration{ext}")
+    audio_path = os.path.join(job_dir, "narration.mp3")
+    file_storage.save(raw_path)
+    # Always land on narration.mp3 — the UI and assemble path expect that name.
+    cmd = [
+        "ffmpeg", "-y", "-i", raw_path,
+        "-vn", "-c:a", "libmp3lame", "-q:a", "2",
+        audio_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        os.remove(raw_path)
+    except OSError:
+        pass
+    if result.returncode != 0 or not os.path.exists(audio_path):
+        err = (result.stderr or result.stdout or "ffmpeg failed")[-400:]
+        raise RuntimeError(f"Could not convert audio: {err}")
+    return audio_path
+
 def _make_segment(media_path: str, duration: float, out_path: str, is_image: bool):
     vf = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
     if is_image:
@@ -392,7 +577,8 @@ def _build_thumbnail(src_path: str, title: str, out_path: str, is_video: bool = 
 
 # ─── generation pipeline (audio only) ────────────────────────────────
 
-def run_generation(job_id: str, script: str, voice: str, title: str, n_sections: int):
+def run_generation(job_id: str, script: str, voice: str, title: str, n_sections: int,
+                   uploaded_audio_src: str | None = None):
     job     = JOBS[job_id]
     q       = job["queue"]
     push    = lambda d: _push(q, d)
@@ -465,36 +651,51 @@ SCRIPT:
         push({"phase": "analysed", "msg": f"Script split into {len(sections)} sections",
               "section_count": len(sections)})
 
-        # Step 2: Generate audio
-        push({"phase": "audio", "msg": "Generating audio narration…"})
-        if not _EDGE_TTS:
-            raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
-
+        # Step 2: Narration — uploaded file or edge-tts
         audio_path = os.path.join(job_dir, "narration.mp3")
+        if uploaded_audio_src:
+            push({"phase": "audio", "msg": "Loading uploaded narration…"})
+            if not os.path.exists(uploaded_audio_src):
+                raise RuntimeError("Uploaded audio missing on server")
+            # Convert/copy into the canonical narration.mp3 path.
+            cmd = [
+                "ffmpeg", "-y", "-i", uploaded_audio_src,
+                "-vn", "-c:a", "libmp3lame", "-q:a", "2",
+                audio_path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            try:
+                os.remove(uploaded_audio_src)
+            except OSError:
+                pass
+            if result.returncode != 0 or not os.path.exists(audio_path):
+                err = (result.stderr or result.stdout or "ffmpeg failed")[-400:]
+                raise RuntimeError(f"Could not convert uploaded audio: {err}")
+            print(f"  [ytprod] uploaded narration ready: {os.path.getsize(audio_path):,} bytes",
+                  flush=True)
+        else:
+            push({"phase": "audio", "msg": "Generating audio narration…"})
+            if not _EDGE_TTS:
+                raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
 
-        async def _tts():
-            communicate = edge_tts.Communicate(script, voice, receive_timeout=300)
-            with open(audio_path, "wb") as af:
-                async for chunk in communicate.stream():
-                    if chunk.get("type") == "audio":
-                        af.write(chunk["data"])
-            size = os.path.getsize(audio_path)
-            print(f"  [ytprod] TTS done: {size:,} bytes", flush=True)
+            async def _tts():
+                communicate = edge_tts.Communicate(script, voice, receive_timeout=300)
+                with open(audio_path, "wb") as af:
+                    async for chunk in communicate.stream():
+                        if chunk.get("type") == "audio":
+                            af.write(chunk["data"])
+                size = os.path.getsize(audio_path)
+                print(f"  [ytprod] TTS done: {size:,} bytes", flush=True)
 
-        asyncio.run(_tts())
+            asyncio.run(_tts())
         job["audio_path"] = audio_path
 
         # Step 3: Rescale timings to actual audio duration
         actual_dur = _audio_duration(audio_path)
-        if actual_dur > 0 and sections:
-            est_total = sections[-1]["end"]
-            ratio = actual_dur / est_total
-            for s in sections:
-                s["start"] = round(s["start"] * ratio, 2)
-                s["end"]   = round(s["end"]   * ratio, 2)
-            sections[-1]["end"] = round(actual_dur, 2)
+        _rescale_sections(sections, actual_dur)
 
         job["status"] = "audio_ready"
+        _persist_job(job_id)
         push({
             "phase": "audio_done",
             "msg": "Audio ready — upload your media for each section",
@@ -508,6 +709,8 @@ SCRIPT:
     except Exception as e:
         traceback.print_exc()
         job["status"] = "error"
+        job["error_message"] = str(e)
+        _persist_job(job_id)
         push({"phase": "error", "msg": str(e)})
     finally:
         q.put(None)
@@ -584,15 +787,10 @@ def run_generation_from_sections(job_id: str, sections_text: list, script_for_tt
 
         # Step 3: rescale — identical to run_generation's Step 3.
         actual_dur = _audio_duration(audio_path)
-        if actual_dur > 0 and sections:
-            est_total = sections[-1]["end"]
-            ratio = actual_dur / est_total
-            for s in sections:
-                s["start"] = round(s["start"] * ratio, 2)
-                s["end"]   = round(s["end"]   * ratio, 2)
-            sections[-1]["end"] = round(actual_dur, 2)
+        _rescale_sections(sections, actual_dur)
 
         job["status"] = "audio_ready"
+        _persist_job(job_id)
         push({
             "phase": "audio_done",
             "msg": "Audio ready — upload your media for each section",
@@ -611,6 +809,7 @@ def run_generation_from_sections(job_id: str, sections_text: list, script_for_tt
         # a real message on resume rather than just "status: error" with no detail.
         # Only added to this new function; run_generation itself is untouched.
         job["error_message"] = str(e)
+        _persist_job(job_id)
         push({"phase": "error", "msg": str(e)})
     finally:
         q.put(None)
@@ -721,11 +920,14 @@ def run_assembly(job_id: str):
         job["chapters"]   = chapters
         job["video_path"] = video_path
         job["status"]     = "done"
+        _persist_job(job_id)
         push({"phase": "done", "msg": "Video ready!", "chapters": chapters})
 
     except Exception as e:
         traceback.print_exc()
         job["status"] = "error_assembly"
+        job["error_message"] = str(e)
+        _persist_job(job_id)
         push({"phase": "error", "msg": str(e)})
     finally:
         q.put(None)
@@ -825,9 +1027,10 @@ def job_state(job_id):
     frontend resume a job whose SSE stream has already been fully drained
     (the sentinel already consumed means reconnecting to /progress hangs
     forever with no way to ever see that job's state again). Used by the
-    ?job= deep-link resume path.
+    ?job= deep-link resume path. Hydrates from disk state.json when the
+    in-memory JOBS entry was lost (page refresh after process recycle, etc.).
     """
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
     audio_dur = None
@@ -835,12 +1038,16 @@ def job_state(job_id):
         audio_dur = round(_audio_duration(job["audio_path"]), 2)
     return jsonify({
         "status": job.get("status"),
+        "script": job.get("script") or "",
+        "voice": job.get("voice"),
         "title": job.get("title"),
         "description": job.get("description"),
         "hashtags": job.get("hashtags"),
         "sections": job.get("sections", []),
         "audio_dur": audio_dur,
-        "has_video": bool(job.get("video_path")),
+        "has_video": bool(job.get("video_path") and os.path.exists(job["video_path"] or "")),
+        "has_music": bool(job.get("music_path") and os.path.exists(job["music_path"] or "")),
+        "music_vol": job.get("music_vol", 0.15),
         "chapters": job.get("chapters"),
         "error_message": job.get("error_message"),
         # Written by the platform's producer_scout clip-extraction thread
@@ -853,8 +1060,11 @@ def job_state(job_id):
 
 @app.route("/progress/<job_id>")
 def progress(job_id):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
+        return "Not found", 404
+    # Hydrated jobs have an empty queue — clients should use /job-state instead.
+    if job.get("status") != "running" or job.get("queue") is None:
         return "Not found", 404
 
     def stream():
@@ -871,7 +1081,7 @@ def progress(job_id):
 
 @app.route("/upload-section/<job_id>/<int:idx>", methods=["POST"])
 def upload_section(job_id, idx):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     if "file" not in request.files:
@@ -887,6 +1097,7 @@ def upload_section(job_id, idx):
     if 0 <= idx < len(job["sections"]):
         job["sections"][idx]["media"]     = media_path
         job["sections"][idx]["media_ext"] = ext
+    _persist_job(job_id)
     is_video = ext in (".mp4", ".mov", ".webm")
     return jsonify({
         "ok": True,
@@ -897,7 +1108,7 @@ def upload_section(job_id, idx):
 
 @app.route("/assemble/<job_id>", methods=["POST"])
 def assemble(job_id):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     if job["status"] not in ("audio_ready", "done", "error_assembly"):
@@ -914,13 +1125,14 @@ def assemble(job_id):
     job["music_vol"]      = float(data.get("music_vol", 0.15))
     job["status"]         = "assembling"
     job["assemble_queue"] = queue.Queue()
+    _persist_job(job_id)
     threading.Thread(target=run_assembly, args=(job_id,), daemon=True).start()
     return jsonify({"ok": True})
 
 
 @app.route("/upload-music/<job_id>", methods=["POST"])
 def upload_music(job_id):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     if "file" not in request.files:
@@ -934,12 +1146,106 @@ def upload_music(job_id):
     music_path = os.path.join(job_dir, f"music{ext}")
     f.save(music_path)
     job["music_path"] = music_path
+    _persist_job(job_id)
     return jsonify({"ok": True, "filename": f.filename})
+
+
+@app.route("/load-audio", methods=["POST"])
+def load_audio():
+    """Load or replace narration audio in the Audio & Sections column.
+
+    Two modes:
+      1. Replace — form field job_id for an existing audio_ready (or later)
+         job: swap narration.mp3 and rescale section timings. Sync response.
+      2. Bootstrap — no job_id (or unknown): requires a script; creates a job,
+         AI-splits into sections, uses the uploaded file instead of TTS.
+         Returns job_id; client streams /progress like Generate Audio.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "No file"}), 400
+
+    job_id = (request.form.get("job_id") or "").strip()
+    job = _get_job(job_id) if job_id else None
+
+    # ── Mode 1: replace narration on an existing job ──────────────────
+    if job and job.get("sections"):
+        if job.get("status") == "running":
+            return jsonify({"error": "Wait for the current generation to finish"}), 400
+        try:
+            job_dir = os.path.join(OUTPUT_DIR, job_id)
+            audio_path = _save_narration_upload(f, job_dir)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+        job["audio_path"] = audio_path
+        actual_dur = _audio_duration(audio_path)
+        _rescale_sections(job["sections"], actual_dur)
+        # Keep assemble-able even if they previously finished a video.
+        if job.get("status") in ("done", "error_assembly", "audio_ready", None):
+            job["status"] = "audio_ready"
+        _persist_job(job_id)
+        return jsonify({
+            "ok": True,
+            "mode": "replace",
+            "job_id": job_id,
+            "audio_dur": round(actual_dur, 2),
+            "sections": job["sections"],
+            "title": job.get("title"),
+            "description": job.get("description"),
+            "hashtags": job.get("hashtags") or [],
+        })
+
+    # ── Mode 2: bootstrap a new job from script + uploaded audio ──────
+    script = (request.form.get("script") or "").strip()
+    if not script:
+        return jsonify({
+            "error": "Paste a script first (or generate audio so sections exist, then replace).",
+        }), 400
+    if len(script) < 20:
+        return jsonify({"error": "Script too short"}), 400
+
+    voice = request.form.get("voice") or "en-US-GuyNeural"
+    title = (request.form.get("title") or "").strip()
+    try:
+        n_sections = max(2, min(20, int(request.form.get("sections") or 6)))
+    except (TypeError, ValueError):
+        n_sections = 6
+
+    job_id = uuid.uuid4().hex
+    job_dir = os.path.join(OUTPUT_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        # Stage raw upload; run_generation converts it to narration.mp3.
+        ext = os.path.splitext(f.filename)[1].lower() or ".mp3"
+        if ext not in _AUDIO_UPLOAD_EXTS:
+            return jsonify({"error": f"Unsupported audio format: {ext}"}), 400
+        staged = os.path.join(job_dir, f"_upload_narration{ext}")
+        f.save(staged)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    JOBS[job_id] = {
+        "status": "running",
+        "queue": queue.Queue(),
+        "script": script,
+        "voice": voice,
+        "sections": [],
+        "audio_path": None,
+        "video_path": None,
+    }
+    threading.Thread(
+        target=run_generation,
+        args=(job_id, script, voice, title, n_sections, staged),
+        daemon=True,
+    ).start()
+    return jsonify({"ok": True, "mode": "bootstrap", "job_id": job_id})
 
 
 @app.route("/thumbnail/<job_id>", methods=["POST"])
 def make_thumbnail(job_id):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
     data    = request.get_json(silent=True) or {}
@@ -966,7 +1272,7 @@ def make_thumbnail(job_id):
 
 @app.route("/assemble-progress/<job_id>")
 def assemble_progress(job_id):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return "Not found", 404
 
@@ -986,25 +1292,27 @@ def assemble_progress(job_id):
 
 @app.route("/result/<job_id>/<file>")
 def result_file(job_id, file):
-    job = JOBS.get(job_id)
-    if not job:
-        return "Not found", 404
+    # Serve from disk even before full hydrate when possible; still hydrate
+    # so subsequent API calls see the job.
+    job = _get_job(job_id)
     safe = re.sub(r"[^a-zA-Z0-9_.\-]", "", file)
     path = os.path.join(OUTPUT_DIR, job_id, safe)
     if not os.path.exists(path):
         return "File not found", 404
+    if not job and not os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
+        return "Not found", 404
     return send_file(path)
 
 
 @app.route("/download/<job_id>/<file>")
 def download_file(job_id, file):
-    job = JOBS.get(job_id)
-    if not job:
-        return "Not found", 404
+    job = _get_job(job_id)
     safe = re.sub(r"[^a-zA-Z0-9_.\-]", "", file)
     path = os.path.join(OUTPUT_DIR, job_id, safe)
     if not os.path.exists(path):
         return "File not found", 404
+    if not job and not os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
+        return "Not found", 404
     return send_file(path, as_attachment=True)
 
 
@@ -1054,8 +1362,21 @@ h1{font-size:20px;font-weight:700;letter-spacing:-.02em}
   scrollbar-width:thin;scrollbar-color:var(--lineb) transparent}
 
 /* fixed top + bottom zones in col2 */
-.col2-audio{flex:none;padding:12px;border-bottom:1px solid var(--line);display:none}
-.col2-audio.show{display:block}
+.col2-audio{flex:none;padding:12px;border-bottom:1px solid var(--line)}
+.col2-audio .audio-player-wrap{display:none}
+.col2-audio.has-audio .audio-player-wrap{display:block}
+.col2-audio.has-audio .audio-load{display:none}
+.audio-load{border:1.5px dashed var(--lineb);border-radius:8px;padding:14px 12px;
+  font-size:12px;color:var(--faint);cursor:pointer;text-align:center;
+  transition:border-color .15s,background .15s;line-height:1.5}
+.audio-load:hover,.audio-load.drag-over{border-color:var(--amber);
+  background:rgba(255,177,60,.06);color:var(--amber)}
+.audio-load input[type=file]{display:none}
+.audio-replace{display:inline-flex;align-items:center;gap:5px;margin-top:7px;margin-left:8px;
+  background:none;border:1px solid var(--lineb);color:var(--muted);
+  border-radius:7px;padding:4px 10px;font-size:11px;font-family:monospace;
+  cursor:pointer;transition:all .15s}
+.audio-replace:hover{border-color:var(--amber);color:var(--amber)}
 .col2-sections{flex:1;overflow-y:auto;padding:10px;min-height:0;
   scrollbar-width:thin;scrollbar-color:var(--lineb) transparent}
 .col2-foot{flex:none;padding:10px 12px;border-top:1px solid var(--line);
@@ -1322,18 +1643,32 @@ video{width:100%;border-radius:8px;background:#000;display:block}
 <div class="col" id="col2">
   <div class="col-head">&#9670; Audio &amp; Sections</div>
 
-  <!-- fixed audio + timeline zone -->
+  <!-- fixed audio + timeline zone — always visible so Load audio is available -->
   <div class="col2-audio" id="audioArea">
-    <audio id="audioPlayer" controls></audio>
-    <div class="timeline" id="timeline"></div>
-    <a class="dl-btn" id="audioDl" href="#" download style="font-size:11px">&#8595; Download MP3</a>
+    <div class="audio-load" id="audioLoad"
+         onclick="$('audioFile').click()"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="onAudioLoadDrop(event)">
+      <input type="file" id="audioFile" accept=".mp3,.wav,.aac,.m4a,.ogg,.flac"
+             onchange="loadNarrationAudio(this.files[0])">
+      &#128266; Load narration audio<br>
+      <span style="color:var(--faint);font-size:10px">MP3 · WAV · M4A · OGG — or use Generate Audio</span>
+    </div>
+    <div class="audio-player-wrap" id="audioPlayerWrap">
+      <audio id="audioPlayer" controls></audio>
+      <div class="timeline" id="timeline"></div>
+      <a class="dl-btn" id="audioDl" href="#" download style="font-size:11px">&#8595; Download MP3</a>
+      <button type="button" class="audio-replace" id="audioReplaceBtn"
+              onclick="$('audioFile').click()">&#8635; Replace audio</button>
+    </div>
     <div id="prefillNote" style="display:none;font-size:11px;color:var(--faint);margin-top:6px"></div>
   </div>
 
   <!-- scrollable section cards -->
   <div class="col2-sections" id="sectionsArea">
     <div class="placeholder" id="sec-placeholder">
-      Generate audio first.<br>Your section cards will appear here.
+      Generate or load audio first.<br>Your section cards will appear here.
     </div>
   </div>
 
@@ -1490,18 +1825,71 @@ function copyEl(id, btn) {
   setTimeout(() => btn.textContent = orig, 1500);
 }
 
+// ── job persistence (URL + localStorage) ─────────────────────────────
+const YTPROD_JOB_KEY = 'ytprod_last_job';
+
+function rememberJob(jobId) {
+  if (!jobId) return;
+  _jobId = jobId;
+  try { localStorage.setItem(YTPROD_JOB_KEY, jobId); } catch (e) {}
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('job') !== jobId) {
+      url.searchParams.set('job', jobId);
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+  } catch (e) {}
+}
+
+function clearRememberedJob() {
+  try { localStorage.removeItem(YTPROD_JOB_KEY); } catch (e) {}
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('job')) {
+      url.searchParams.delete('job');
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+  } catch (e) {}
+}
+
+function restoreFormFromJob(d) {
+  if (d.script && !$('script').value.trim()) $('script').value = d.script;
+  if (d.title && !$('vidTitle').value.trim()) $('vidTitle').value = d.title;
+  if (d.voice) {
+    const v = $('voice');
+    if ([...v.options].some(o => o.value === d.voice)) v.value = d.voice;
+  }
+  if (d.sections && d.sections.length) {
+    const n = String(d.sections.length);
+    const sel = $('nsections');
+    if ([...sel.options].some(o => o.value === n)) sel.value = n;
+  }
+  if (d.has_music) {
+    _musicReady = true;
+    $('musicLabel').textContent = '♪ Background music loaded';
+    $('musicDrop').classList.add('ready');
+    $('musicControls').classList.add('show');
+    if (d.music_vol != null) {
+      const pct = Math.round(Number(d.music_vol) * 100);
+      $('musicVol').value = Math.max(5, Math.min(40, pct));
+      $('musicVolPct').textContent = $('musicVol').value + '%';
+    }
+  }
+}
+
 // ── generate audio ───────────────────────────────────────────────────
 $('genBtn').addEventListener('click', async () => {
   const script = $('script').value.trim();
   if (!script) { alert('Paste your script first.'); return; }
 
   // reset
+  clearRememberedJob();
   _jobId = null; _sections = []; _audioDur = 0; _hashtags = [];
   $('genBtn').disabled = true;
   $('progressWrap').classList.add('show');
   $('errMsg').classList.remove('show');
   $('progressBar').classList.add('indet');
-  $('audioArea').classList.remove('show');
+  $('audioArea').classList.remove('has-audio');
   const _ph = $('sec-placeholder');
   $('sectionsArea').innerHTML = '';
   _ph.style.display = 'block';
@@ -1526,8 +1914,8 @@ $('genBtn').addEventListener('click', async () => {
     });
     const d = await r.json();
     if (d.error) { showErr(d.error); return; }
-    _jobId = d.job_id;
-    streamGenProgress(_jobId);
+    rememberJob(d.job_id);
+    streamGenProgress(d.job_id);
   } catch(e) { showErr('Server error: '+e.message); }
 });
 
@@ -1553,6 +1941,8 @@ function streamGenProgress(jobId) {
 
 // ── after audio ready ────────────────────────────────────────────────
 function onAudioReady(jobId, data) {
+  rememberJob(jobId);
+  restoreFormFromJob(data);
   _audioDur   = data.audio_dur || 0;
   // media_ready/ext reflect whatever the server already has for this section —
   // e.g. pre-filled by the producer_scout video-to-sections flow, which cuts
@@ -1570,14 +1960,19 @@ function onAudioReady(jobId, data) {
   // audio player
   $('audioPlayer').src = `/result/${jobId}/narration.mp3?t=${Date.now()}`;
   $('audioDl').href    = `/download/${jobId}/narration.mp3`;
-  $('audioArea').classList.add('show');
+  $('audioArea').classList.add('has-audio');
 
   // timeline
   buildTimeline(_sections, _audioDur);
 
-  // section cards
-  const _phEl = $('sec-placeholder');
-  if (_phEl) _phEl.style.display = 'none';
+  // section cards — clear first so replace/reload doesn't duplicate
+  const box = $('sectionsArea');
+  box.innerHTML = '';
+  const _phEl = document.createElement('div');
+  _phEl.className = 'placeholder';
+  _phEl.id = 'sec-placeholder';
+  _phEl.style.display = 'none';
+  box.appendChild(_phEl);
   _sections.forEach(s => buildSectionCard(jobId, s));
 
   // publish panel meta (shown later after assemble)
@@ -1592,6 +1987,76 @@ function onAudioReady(jobId, data) {
   // making the producer refresh. First poll no-ops and stops for jobs with
   // no prefill running (typed-script flow).
   pollClipPrefill(jobId);
+}
+
+// ── load / replace narration audio ───────────────────────────────────
+function onAudioLoadDrop(e) {
+  e.preventDefault();
+  $('audioLoad').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadNarrationAudio(file);
+}
+
+async function loadNarrationAudio(file) {
+  if (!file) return;
+  const script = $('script').value.trim();
+  // Replace mode needs an existing job with sections; bootstrap needs a script.
+  if (!_jobId && !script) {
+    alert('Paste your script first, or generate audio so sections exist.');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  if (_jobId) fd.append('job_id', _jobId);
+  fd.append('script', script);
+  fd.append('voice', $('voice').value);
+  fd.append('title', $('vidTitle').value.trim());
+  fd.append('sections', $('nsections').value);
+
+  $('genBtn').disabled = true;
+  $('progressWrap').classList.add('show');
+  $('errMsg').classList.remove('show');
+  $('progressBar').classList.add('indet');
+  buildGenSteps();
+  markStep('audio');
+
+  try {
+    const r = await fetch('/load-audio', {method:'POST', body: fd});
+    const d = await r.json();
+    if (d.error) { showErr(d.error); return; }
+
+    if (d.mode === 'replace') {
+      markStep('analysing', true);
+      markStep('audio', true);
+      $('progressBar').classList.remove('indet');
+      $('progressBar').querySelector('i').style.width = '100%';
+      $('genBtn').disabled = false;
+      onAudioReady(d.job_id, d);
+      return;
+    }
+
+    // bootstrap — same SSE path as Generate Audio
+    rememberJob(d.job_id);
+    _sections = [];
+    _audioDur = 0;
+    _hashtags = [];
+    $('audioArea').classList.remove('has-audio');
+    const _ph = $('sec-placeholder');
+    $('sectionsArea').innerHTML = '';
+    if (_ph) {
+      _ph.style.display = 'block';
+      $('sectionsArea').appendChild(_ph);
+    }
+    markStep('analysing');
+    streamGenProgress(d.job_id);
+  } catch(e) {
+    showErr('Audio load failed: ' + e.message);
+  } finally {
+    // Allow picking the same file again after a failed/success upload.
+    const inp = $('audioFile');
+    if (inp) inp.value = '';
+  }
 }
 
 // ── live-fill of auto-extracted section clips ─────────────────────────
@@ -2018,15 +2483,19 @@ function buildHashtags(tags) {
   };
 }
 
-// ── job resume (?job=<id> deep link) ───────────────────────────────
+// ── job resume (?job=<id> deep link + localStorage) ────────────────
 // Used by the platform's producer_scout review flow: approving a proposal
 // creates the job server-side and redirects here with ?job=<id> instead of
 // this page creating the job itself via the Generate button.
+// Also restores the last in-progress job after a plain browser refresh.
 (async function resumeJobFromUrl(){
-  const jobId = new URLSearchParams(window.location.search).get('job');
+  let jobId = new URLSearchParams(window.location.search).get('job');
+  if (!jobId) {
+    try { jobId = localStorage.getItem(YTPROD_JOB_KEY); } catch (e) {}
+  }
   if (!jobId) return;
 
-  _jobId = jobId;
+  rememberJob(jobId);
   $('genBtn').disabled = true;
   $('progressWrap').classList.add('show');
   buildGenSteps();
@@ -2034,7 +2503,15 @@ function buildHashtags(tags) {
   try {
     const r = await fetch('/job-state/'+jobId);
     const d = await r.json();
-    if (d.error) { showErr('Job not found.'); return; }
+    if (d.error) {
+      // Stale bookmark / wiped output dir — drop the remembered id quietly.
+      clearRememberedJob();
+      $('genBtn').disabled = false;
+      $('progressWrap').classList.remove('show');
+      return;
+    }
+
+    restoreFormFromJob(d);
 
     if (d.status === 'running') {
       // Still generating — reconnect to the live SSE stream, same as a
@@ -2054,6 +2531,10 @@ function buildHashtags(tags) {
     $('genBtn').disabled = false;
 
     if (d.status === 'error' || d.status === 'error_assembly') {
+      // Still restore audio/sections if narration exists so refresh isn't a dead end.
+      if (d.sections && d.sections.length && d.audio_dur) {
+        onAudioReady(jobId, d);
+      }
       showErr(d.error_message || 'This job failed — check the server log.');
       return;
     }

@@ -225,6 +225,7 @@ def _extract_section_clips(job_id, video_url, src_ranges):
 
     def _finish(status):
         prefill["status"] = status
+        ytprod._persist_job(job_id)
 
     # run_generation_from_sections populates job["sections"] almost
     # immediately (Step 1, before the TTS call that actually takes real
@@ -276,5 +277,7 @@ def _extract_section_clips(job_id, video_url, src_ranges):
         sections[i]["media"] = out_file
         sections[i]["media_ext"] = ".mp4"
         prefill["done"] = prefill.get("done", 0) + 1
+        ytprod._persist_job(job_id)
 
     _finish("done")
+    ytprod._persist_job(job_id)

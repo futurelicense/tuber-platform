@@ -50,6 +50,7 @@ YTPROD_ROUTES = [
     "/upload-section/",
     "/assemble",
     "/upload-music",
+    "/load-audio",
     "/thumbnail",
     "/assemble-progress",
     "/result/",
