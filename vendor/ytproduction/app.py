@@ -41,6 +41,7 @@ except ImportError:
 APP_DIR    = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+print(f"  [ytprod] OUTPUT_DIR={OUTPUT_DIR}", flush=True)
 
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
 _DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
@@ -93,6 +94,165 @@ def _job_dir(job_id: str) -> str:
 
 def _job_state_path(job_id: str) -> str:
     return os.path.join(_job_dir(job_id), "state.json")
+
+
+def _find_section_media(job_dir: str, idx: int):
+    """Locate section media on disk (manual upload or auto-extract)."""
+    if not os.path.isdir(job_dir):
+        return None, None
+    # Prefer explicit upload name, then auto-extract, then any section_NNN* match.
+    preferred = []
+    others = []
+    try:
+        names = os.listdir(job_dir)
+    except OSError:
+        return None, None
+    for name in names:
+        m = re.match(rf"section_{idx:03d}(_auto)?(\.[A-Za-z0-9]+)$", name)
+        if not m:
+            continue
+        path = os.path.join(job_dir, name)
+        if not os.path.isfile(path):
+            continue
+        ext = m.group(2).lower()
+        if m.group(1):
+            others.append((path, ext))
+        else:
+            preferred.append((path, ext))
+    if preferred:
+        return preferred[0]
+    if others:
+        return others[0]
+    return None, None
+
+
+def _find_narration(job_dir: str):
+    """Return path to narration audio in job_dir, if any."""
+    if not os.path.isdir(job_dir):
+        return None
+    for name in ("narration.mp3", "narration.wav", "narration.m4a", "narration.aac"):
+        path = os.path.join(job_dir, name)
+        if os.path.isfile(path):
+            return path
+    try:
+        for name in os.listdir(job_dir):
+            low = name.lower()
+            if low.startswith("narration.") or low.startswith("_upload_narration"):
+                path = os.path.join(job_dir, name)
+                if os.path.isfile(path):
+                    return path
+    except OSError:
+        pass
+    return None
+
+
+def _find_music(job_dir: str):
+    if not os.path.isdir(job_dir):
+        return None
+    try:
+        for name in os.listdir(job_dir):
+            if name.startswith("music.") and os.path.isfile(os.path.join(job_dir, name)):
+                return os.path.join(job_dir, name)
+    except OSError:
+        pass
+    return None
+
+
+def _rebuild_job_from_disk(job_id: str, sections_payload=None):
+    """Last-resort job recovery for assemble/upload after worker recycle.
+
+    Uses narration + section_* files on disk, optionally guided by the
+    browser's section timings from the assemble POST body.
+    """
+    if not job_id or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
+        return None
+    job_id = job_id.lower()
+    job_dir = _job_dir(job_id)
+    audio_path = _find_narration(job_dir)
+    if not audio_path:
+        print(f"  [ytprod] rebuild failed — no narration in {job_dir} "
+              f"(OUTPUT_DIR={OUTPUT_DIR})", flush=True)
+        return None
+
+    actual_dur = _audio_duration(audio_path) or 1.0
+    sections = []
+
+    if sections_payload:
+        # Preserve the producer's in-browser section count/timings.
+        by_idx = {}
+        for cs in sections_payload:
+            try:
+                idx = int(cs.get("idx", -1))
+            except (TypeError, ValueError):
+                continue
+            if idx < 0:
+                continue
+            by_idx[idx] = cs
+        if by_idx:
+            n = max(by_idx) + 1
+            n = max(2, min(20, n))
+            # Start from equal slices, then overlay client timings.
+            sections = _equal_sections(n, actual_dur)
+            for idx, cs in by_idx.items():
+                if idx >= len(sections):
+                    continue
+                try:
+                    start = float(cs.get("start", sections[idx]["start"]))
+                    end = float(cs.get("end", sections[idx]["end"]))
+                except (TypeError, ValueError):
+                    continue
+                sections[idx]["start"] = max(0.0, start)
+                sections[idx]["end"] = max(sections[idx]["start"] + 0.5, end)
+                if isinstance(cs.get("text"), str) and cs["text"].strip():
+                    sections[idx]["text"] = cs["text"].strip()
+
+    if not sections:
+        media_idxs = set()
+        try:
+            for name in os.listdir(job_dir):
+                m = re.match(r"section_(\d+)", name)
+                if m:
+                    media_idxs.add(int(m.group(1)))
+        except OSError:
+            pass
+        n = max(media_idxs) + 1 if media_idxs else 6
+        n = max(2, min(20, n))
+        sections = _equal_sections(n, actual_dur)
+
+    for s in sections:
+        media, ext = _find_section_media(job_dir, s["idx"])
+        if media:
+            s["media"] = media
+            s["media_ext"] = ext
+
+    video_path = os.path.join(job_dir, "video.mp4")
+    if not os.path.isfile(video_path):
+        video_path = None
+
+    job = {
+        "status": "audio_ready",
+        "queue": queue.Queue(),
+        "script": "",
+        "voice": "en-US-GuyNeural",
+        "title": "My Video",
+        "description": "",
+        "hashtags": [],
+        "sections": sections,
+        "audio_path": audio_path,
+        "video_path": video_path,
+        "music_path": _find_music(job_dir),
+        "chapters": None,
+        "error_message": None,
+        "xfade": True,
+        "music_vol": 0.15,
+        "clip_prefill": None,
+    }
+    JOBS[job_id] = job
+    _persist_job(job_id)
+    print(f"  [ytprod] rebuilt job {job_id} from disk "
+          f"({len(sections)} sections, audio={os.path.basename(audio_path)})",
+          flush=True)
+    return job
 
 
 def _persist_job(job_id: str) -> None:
@@ -164,57 +324,18 @@ def _hydrate_job(job_id: str):
     # No state.json — still recover if narration exists so uploads/assemble
     # keep working after a worker recycle (audio URL can succeed without state).
     if data is None:
-        audio_path = _abs("narration.mp3")
-        if not audio_path:
-            return None
-        actual_dur = _audio_duration(audio_path) or 1.0
-        # Infer section count from existing section_* media files, else 6.
-        media_idxs = set()
-        try:
-            for name in os.listdir(job_dir):
-                m = re.match(r"section_(\d+)", name)
-                if m:
-                    media_idxs.add(int(m.group(1)))
-        except OSError:
-            pass
-        n = max(media_idxs) + 1 if media_idxs else 6
-        n = max(2, min(20, n))
-        sections = _equal_sections(n, actual_dur)
-        for i in sorted(media_idxs):
-            if i >= len(sections):
-                continue
-            for name in os.listdir(job_dir):
-                if name.startswith(f"section_{i:03d}") and not name.endswith(".json"):
-                    sections[i]["media"] = os.path.join(job_dir, name)
-                    sections[i]["media_ext"] = os.path.splitext(name)[1].lower()
-                    break
-        job = {
-            "status": "audio_ready",
-            "queue": queue.Queue(),
-            "script": "",
-            "voice": "en-US-GuyNeural",
-            "title": "My Video",
-            "description": "",
-            "hashtags": [],
-            "sections": sections,
-            "audio_path": audio_path,
-            "video_path": _abs("video.mp4"),
-            "music_path": None,
-            "chapters": None,
-            "error_message": None,
-            "xfade": True,
-            "music_vol": 0.15,
-            "clip_prefill": None,
-        }
-        JOBS[job_id] = job
-        _persist_job(job_id)
-        print(f"  [ytprod] recovered job {job_id} from narration only ({n} sections)", flush=True)
-        return job
+        return _rebuild_job_from_disk(job_id)
 
     sections = []
-    for s in data.get("sections") or []:
+    for i, s in enumerate(data.get("sections") or []):
         sec = dict(s)
+        idx = int(sec.get("idx", i))
+        sec["idx"] = idx
         media = _abs(sec.get("media"))
+        if not media:
+            media, ext = _find_section_media(job_dir, idx)
+            if media:
+                sec["media_ext"] = ext
         if media:
             sec["media"] = media
             if not sec.get("media_ext"):
@@ -223,9 +344,12 @@ def _hydrate_job(job_id: str):
             sec["media"] = None
         sections.append(sec)
 
-    audio_path = _abs(data.get("audio_file")) or _abs("narration.mp3")
+    audio_path = (
+        _abs(data.get("audio_file"))
+        or _find_narration(job_dir)
+    )
     video_path = _abs(data.get("video_file")) or _abs("video.mp4")
-    music_path = _abs(data.get("music_file"))
+    music_path = _abs(data.get("music_file")) or _find_music(job_dir)
 
     status = data.get("status") or "audio_ready"
     # A hydrated job never has a live SSE queue from the prior process —
@@ -236,9 +360,18 @@ def _hydrate_job(job_id: str):
     if not sections and audio_path:
         actual_dur = _audio_duration(audio_path) or 1.0
         sections = _equal_sections(6, actual_dur)
+        for s in sections:
+            media, ext = _find_section_media(job_dir, s["idx"])
+            if media:
+                s["media"] = media
+                s["media_ext"] = ext
+
+    if not audio_path:
+        # state.json alone isn't enough to assemble — try full disk rebuild.
+        return _rebuild_job_from_disk(job_id)
 
     job = {
-        "status": status,
+        "status": status if status != "error" else ("audio_ready" if audio_path else "error"),
         "queue": queue.Queue(),
         "script": data.get("script") or "",
         "voice": data.get("voice") or "en-US-GuyNeural",
@@ -255,20 +388,26 @@ def _hydrate_job(job_id: str):
         "music_vol": data.get("music_vol", 0.15),
         "clip_prefill": data.get("clip_prefill"),
     }
+    # If we only had an early "running" stub, promote once narration exists.
+    if job["status"] not in ("audio_ready", "done", "error_assembly") and audio_path:
+        job["status"] = "audio_ready"
     JOBS[job_id] = job
-    print(f"  [ytprod] hydrated job {job_id} ({status})", flush=True)
+    print(f"  [ytprod] hydrated job {job_id} ({job['status']})", flush=True)
     return job
 
 
-def _get_job(job_id: str):
-    """In-memory job, or hydrate/recover from disk if present."""
+def _get_job(job_id: str, sections_hint=None):
+    """In-memory job, hydrate from state.json, or rebuild from disk artifacts."""
     if not job_id:
         return None
     job_id = job_id.strip().lower()
     job = JOBS.get(job_id)
     if job:
         return job
-    return _hydrate_job(job_id)
+    job = _hydrate_job(job_id)
+    if job:
+        return job
+    return _rebuild_job_from_disk(job_id, sections_hint)
 
 
 def _ensure_section_slot(job: dict, idx: int, audio_dur: float | None = None) -> None:
@@ -1202,21 +1341,47 @@ def upload_section(job_id, idx):
 
 @app.route("/assemble/<job_id>", methods=["POST"])
 def assemble(job_id):
-    job = _get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    if job["status"] not in ("audio_ready", "done", "error_assembly"):
-        return jsonify({"error": "Audio not ready yet"}), 400
-
+    job_id = (job_id or "").strip().lower()
     data = request.get_json(silent=True) or {}
-    for cs in data.get("sections", []):
+    sections_payload = data.get("sections") or []
+
+    job = _get_job(job_id, sections_hint=sections_payload)
+    if not job:
+        print(f"  [ytprod] assemble 404 job={job_id} OUTPUT_DIR={OUTPUT_DIR} "
+              f"dir_exists={os.path.isdir(_job_dir(job_id))}", flush=True)
+        return jsonify({
+            "error": "Job not found — the server lost this session. "
+                     "Reload the page (your audio may still be there), then Assemble again.",
+        }), 404
+
+    # Promote recoverable statuses so a hydrated "running" stub with narration
+    # can still be assembled.
+    if job.get("audio_path") and os.path.exists(job["audio_path"]):
+        if job.get("status") not in ("audio_ready", "done", "error_assembly", "assembling"):
+            job["status"] = "audio_ready"
+    if job["status"] not in ("audio_ready", "done", "error_assembly"):
+        return jsonify({"error": "Audio not ready yet — wait for narration, then try again."}), 400
+
+    for cs in sections_payload:
         idx = cs.get("idx", -1)
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            continue
+        _ensure_section_slot(job, idx)
         if 0 <= idx < len(job["sections"]):
             job["sections"][idx]["start"] = float(cs.get("start", job["sections"][idx]["start"]))
             job["sections"][idx]["end"]   = float(cs.get("end",   job["sections"][idx]["end"]))
+        # Re-bind media from disk in case paths went stale after recycle.
+        media, ext = _find_section_media(_job_dir(job_id), idx)
+        if media and 0 <= idx < len(job["sections"]):
+            job["sections"][idx]["media"] = media
+            job["sections"][idx]["media_ext"] = ext
 
     job["xfade"]          = bool(data.get("xfade", True))
     job["music_vol"]      = float(data.get("music_vol", 0.15))
+    if not job.get("music_path"):
+        job["music_path"] = _find_music(_job_dir(job_id))
     job["status"]         = "assembling"
     job["assemble_queue"] = queue.Queue()
     _persist_job(job_id)
@@ -1442,27 +1607,23 @@ def assemble_progress(job_id):
 
 @app.route("/result/<job_id>/<file>")
 def result_file(job_id, file):
-    # Serve from disk even before full hydrate when possible; still hydrate
-    # so subsequent API calls see the job.
-    job = _get_job(job_id)
+    # Serving a job file is enough evidence the job dir exists — hydrate so
+    # a later assemble/upload on this worker finds it in JOBS.
+    _get_job(job_id)
     safe = re.sub(r"[^a-zA-Z0-9_.\-]", "", file)
     path = os.path.join(OUTPUT_DIR, job_id, safe)
     if not os.path.exists(path):
         return "File not found", 404
-    if not job and not os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
-        return "Not found", 404
     return send_file(path)
 
 
 @app.route("/download/<job_id>/<file>")
 def download_file(job_id, file):
-    job = _get_job(job_id)
+    _get_job(job_id)
     safe = re.sub(r"[^a-zA-Z0-9_.\-]", "", file)
     path = os.path.join(OUTPUT_DIR, job_id, safe)
     if not os.path.exists(path):
         return "File not found", 404
-    if not job and not os.path.isdir(os.path.join(OUTPUT_DIR, job_id)):
-        return "Not found", 404
     return send_file(path, as_attachment=True)
 
 
@@ -2609,18 +2770,29 @@ $('assembleBtn').addEventListener('click', async () => {
   $('thumbnailSection').classList.add('section-hidden');
 
   const payload = {
-    sections:  _sections.map(s => ({idx: s.idx, start: s.start, end: s.end})),
+    sections:  _sections.map(s => ({
+      idx: s.idx,
+      start: s.start,
+      end: s.end,
+      text: s.text || '',
+    })),
     xfade:     $('xfadeToggle').checked,
     music_vol: parseFloat($('musicVol').value) / 100,
   };
 
   try {
+    // Soft ping so this worker hydrates the job before assemble (covers the
+    // case where audio played from disk but JOBS was empty after recycle).
+    try { await fetch('/job-state/'+_jobId); } catch (_) {}
+
     const r = await fetch(`/assemble/${_jobId}`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
-    const d = await r.json();
+    let d;
+    try { d = await r.json(); }
+    catch (_) { assembleErr(r.status === 404 ? 'Job not found' : 'Server error (HTTP '+r.status+')'); return; }
     if (d.error) { assembleErr(d.error); return; }
     streamAssemble(_jobId);
   } catch(e) { assembleErr('Server error: '+e.message); }

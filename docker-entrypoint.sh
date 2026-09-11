@@ -9,6 +9,9 @@ for f in credentials.json cookies.txt; do
     cp "/etc/secrets/$f" "/app/vendor/youtube-clipper/$f"
   fi
 done
-# Persistent disk (Render: /app/data) — ensure upload dir exists before gunicorn.
-mkdir -p "${LISTING_UPLOAD_DIR:-/app/data/listing_uploads}"
+# Persistent disk (Render: /app/data) — ensure media dirs exist before gunicorn.
+mkdir -p \
+  "${YTPROD_OUTPUT_DIR:-/app/data/output}" \
+  "${CLIPPER_DOWNLOAD_DIR:-/app/data/clips}" \
+  "${LISTING_UPLOAD_DIR:-/app/data/listing_uploads}"
 exec "$@"
