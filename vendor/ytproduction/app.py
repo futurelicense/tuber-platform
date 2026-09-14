@@ -1306,29 +1306,95 @@ def progress(job_id):
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+def _ensure_upload_job(job_id: str, min_idx: int = 0):
+    """Guarantee a JOBS entry for section media uploads.
+
+    After a worker recycle the browser still has ?job=<id> but memory is empty.
+    Prefer disk rebuild (narration + section_*); otherwise create a stub so the
+    uploaded file is not rejected — producer can reload audio onto the same id
+    via replace, or assemble once narration is back on disk.
+    """
+    if not job_id or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
+        return None
+    job_id = job_id.lower()
+    n = max(2, min(20, int(min_idx) + 1))
+    hint = [{"idx": i} for i in range(n)]
+
+    job = _get_job(job_id, sections_hint=hint)
+    if job:
+        return job
+
+    job_dir = _job_dir(job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    job = _rebuild_job_from_disk(job_id, hint)
+    if job:
+        return job
+
+    # No narration on disk — keep the session alive so media uploads stick.
+    sections = _equal_sections(n, 60.0)
+    for s in sections:
+        media, ext = _find_section_media(job_dir, s["idx"])
+        if media:
+            s["media"] = media
+            s["media_ext"] = ext
+    job = {
+        "status": "audio_ready",
+        "queue": queue.Queue(),
+        "script": "",
+        "voice": "en-US-GuyNeural",
+        "title": "My Video",
+        "description": "",
+        "hashtags": [],
+        "sections": sections,
+        "audio_path": None,
+        "video_path": None,
+        "music_path": _find_music(job_dir),
+        "chapters": None,
+        "error_message": None,
+        "xfade": True,
+        "music_vol": 0.15,
+        "clip_prefill": None,
+    }
+    JOBS[job_id] = job
+    _persist_job(job_id)
+    print(f"  [ytprod] stub job {job_id} for uploads ({n} sections, "
+          f"OUTPUT_DIR={OUTPUT_DIR})", flush=True)
+    return job
+
+
 @app.route("/upload-section/<job_id>/<int:idx>", methods=["POST"])
 def upload_section(job_id, idx):
     job_id = (job_id or "").strip().lower()
-    job = _get_job(job_id)
-    if not job:
-        return jsonify({"error": "Job not found — reload the page or load audio again."}), 404
+    if not re.fullmatch(r"[0-9a-f]{32}", job_id):
+        return jsonify({"error": "Invalid job id"}), 400
     if "file" not in request.files:
         return jsonify({"error": "No file"}), 400
-    f   = request.files["file"]
+    f = request.files["file"]
     ext = os.path.splitext(f.filename or "")[1].lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".webm"):
         return jsonify({"error": "Unsupported file type"}), 400
-    job_dir    = os.path.join(OUTPUT_DIR, job_id)
+
+    # Persist the file FIRST so a missing in-memory job cannot discard a long upload.
+    job_dir = _job_dir(job_id)
     os.makedirs(job_dir, exist_ok=True)
     media_path = os.path.join(job_dir, f"section_{idx:03d}{ext}")
-    f.save(media_path)
-    # Grow section list if the UI asked for a higher index than we stored
-    # (e.g. recovered job with fewer slots than the open page).
+    try:
+        f.save(media_path)
+    except OSError as e:
+        return jsonify({"error": f"Could not save upload: {e}"}), 500
+
+    job = _ensure_upload_job(job_id, idx)
+    if not job:
+        return jsonify({"error": "Job not found — reload the page or load audio again."}), 404
+
     _ensure_section_slot(job, idx)
     if 0 <= idx < len(job["sections"]):
-        job["sections"][idx]["media"]     = media_path
+        job["sections"][idx]["media"] = media_path
         job["sections"][idx]["media_ext"] = ext
-    if job.get("status") in ("done", "error_assembly", None):
+    if job.get("audio_path") and os.path.exists(job["audio_path"]):
+        if job.get("status") not in ("audio_ready", "done", "error_assembly", "assembling"):
+            job["status"] = "audio_ready"
+    elif job.get("status") in ("done", "error_assembly", None):
         job["status"] = "audio_ready"
     _persist_job(job_id)
     is_video = ext in (".mp4", ".mov", ".webm")
