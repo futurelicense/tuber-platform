@@ -81,6 +81,26 @@ def _push(q, data: dict):
     q.put(json.dumps(data))
 
 
+def _iter_sse(q, heartbeat: float = 15.0):
+    """SSE from a job queue, with comment keepalives while the queue is idle.
+
+    Narration and ffmpeg often go minutes without a status event. A proxy
+    that sees a silent response closes it, and the page used to treat that
+    drop as a failed job even though work was still running.
+    """
+    while True:
+        try:
+            item = q.get(timeout=heartbeat)
+        except queue.Empty:
+            # Pad past typical proxy buffers so the comment is actually flushed.
+            # A 2-byte comment can sit unsent while the idle timer still fires.
+            yield ": keepalive " + (" " * 2048) + "\n\n"
+            continue
+        if item is None:
+            break
+        yield f"data: {item}\n\n"
+
+
 _JOB_PERSIST_KEYS = (
     "status", "script", "voice", "title", "description", "hashtags",
     "sections", "chapters", "error_message", "xfade", "music_vol",
@@ -536,6 +556,86 @@ def _parse_meta_block(content: str):
     return title, description, hashtags
 
 
+def _word_windows(words: list, n: int) -> list:
+    """Contiguous word slices of length n, covering every word in order."""
+    n = max(1, int(n))
+    if not words:
+        return [f"Section {i + 1}" for i in range(n)]
+    if len(words) < n:
+        return [words[min(i, len(words) - 1)] for i in range(n)]
+    base, rem = divmod(len(words), n)
+    out = []
+    idx = 0
+    for i in range(n):
+        take = base + (1 if i < rem else 0)
+        out.append(" ".join(words[idx:idx + take]))
+        idx += take
+    return out
+
+
+def _pack_to_n(units: list, n: int) -> list:
+    """Pack consecutive text units into exactly n sections, balanced by words."""
+    n = max(1, int(n))
+    units = [u.strip() for u in units if u and u.strip()]
+    if len(units) < n:
+        return _word_windows(" ".join(units).split(), n)
+    if len(units) == n:
+        return units
+    weights = [max(len(u.split()), 1) for u in units]
+    target = sum(weights) / n
+    buckets: list = []
+    cur: list = []
+    cur_w = 0
+    buckets_left = n
+    for i, (unit, weight) in enumerate(zip(units, weights)):
+        cur.append(unit)
+        cur_w += weight
+        units_left = len(units) - i - 1
+        must_close = units_left == buckets_left - 1
+        reached = cur_w >= target and units_left >= buckets_left - 1
+        if buckets_left > 1 and cur and (must_close or reached):
+            buckets.append(cur)
+            cur = []
+            cur_w = 0
+            buckets_left -= 1
+    if cur:
+        buckets.append(cur)
+    if len(buckets) != n:
+        return _word_windows(" ".join(units).split(), n)
+    return ["\n\n".join(b) for b in buckets]
+
+
+def _split_script_sections(script: str, n: int) -> list:
+    """Split a script into exactly n sections without calling the model.
+
+    Paragraph breaks win when there are enough of them; otherwise sentences,
+    then even word windows. The model path used to be the only splitter, so a
+    413, a truncated reply, or a count mismatch aborted the job before any
+    narration was generated.
+    """
+    n = max(2, min(20, int(n)))
+    text = re.sub(r"\r\n?", "\n", (script or "").strip())
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paragraphs) >= n:
+        chunks = _pack_to_n(paragraphs, n)
+    else:
+        sentences = []
+        for para in paragraphs or ([text] if text else []):
+            parts = re.split(r"(?<=[.!?])\s+", para)
+            sentences.extend(s.strip() for s in parts if s.strip())
+        if len(sentences) >= n:
+            chunks = _pack_to_n(sentences, n)
+        else:
+            chunks = _word_windows(text.split(), n)
+    if len(chunks) != n:
+        chunks = _word_windows(text.split(), n)
+    out = []
+    for i, chunk in enumerate(chunks):
+        chunk = (chunk or "").strip() or f"Section {i + 1}"
+        out.append({"idx": i, "word_count": len(chunk.split()) or 1, "text": chunk})
+    return out
+
+
 def _parse_section_blocks(content: str):
     """Parse ### SECTION blocks (see _parse_meta_block for why plain text, not JSON)."""
     sections = []
@@ -599,22 +699,37 @@ SCRIPT:
     return vid_title or (title or "My Video"), description, hashtags
 
 
+def _duration_from_probe(data: dict) -> float:
+    """Prefer container duration. Some m4a/mp3 files leave stream duration empty."""
+    if not isinstance(data, dict):
+        return 0.0
+    fmt = (data.get("format") or {}).get("duration")
+    candidates = [fmt]
+    candidates.extend((s or {}).get("duration") for s in data.get("streams") or [])
+    for dur in candidates:
+        if dur in (None, "", "N/A"):
+            continue
+        try:
+            value = float(dur)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return 0.0
+
+
 def _audio_duration(path: str) -> float:
     result = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path],
+        ["ffprobe", "-v", "quiet", "-print_format", "json",
+         "-show_format", "-show_streams", path],
         capture_output=True, text=True
     )
     if result.returncode != 0:
         return 0.0
     try:
-        data = json.loads(result.stdout)
-        for stream in data.get("streams", []):
-            dur = stream.get("duration")
-            if dur:
-                return float(dur)
+        return _duration_from_probe(json.loads(result.stdout))
     except Exception:
-        pass
-    return 0.0
+        return 0.0
 
 
 def _rescale_sections(sections: list, actual_dur: float) -> None:
@@ -811,9 +926,22 @@ def run_generation(job_id: str, script: str, voice: str, title: str, n_sections:
     os.makedirs(job_dir, exist_ok=True)
 
     try:
-        # Step 1: Analyse script with Groq
-        push({"phase": "analysing", "msg": "Analysing script…"})
-        analysis_prompt = f"""Split this video script into exactly {n_sections} sections for a video.
+        # Step 1: section cards are a local split so a Groq 413 / bad parse
+        # cannot abort the job before narration. Metadata stays best-effort.
+        push({"phase": "analysing", "msg": "Splitting script into sections…"})
+        sections_raw = _split_script_sections(script, n_sections)
+        vid_title = title or "My Video"
+        description = ""
+        hashtags: list = []
+
+        # Short scripts still ask the model for topic-aware section text plus
+        # metadata in one call. A long script is not sent whole — that request
+        # 413s on Groq's per-minute cap and the truncated reply used to fail
+        # the job. Metadata for long scripts uses the already-truncated excerpt.
+        ai_sections = None
+        groq_down = False
+        if len(script) <= 6000:
+            analysis_prompt = f"""Split this video script into exactly {n_sections} sections for a video.
 
 Respond with ONLY the following plain-text format, nothing else — no markdown, no JSON, no extra commentary:
 ### META
@@ -837,16 +965,35 @@ Split at natural paragraph or topic breaks.
 
 SCRIPT:
 {script}"""
+            try:
+                raw = _groq(analysis_prompt,
+                            system="You are a video production AI. Respond in the exact "
+                            "plain-text format requested, nothing else.", max_tokens=3000)
+                vid_title, description, hashtags = _parse_meta_block(raw)
+                parsed = _parse_section_blocks(raw)
+                if len(parsed) == n_sections:
+                    ai_sections = parsed
+                else:
+                    print(f"  [ytprod] AI returned {len(parsed)} sections, wanted "
+                          f"{n_sections} — using local split", flush=True)
+            except Exception as e:
+                # _groq already retried. A second metadata call would repeat
+                # that wait and still leave the producer with no narration.
+                groq_down = True
+                print(f"  [ytprod] AI sectioning skipped: {e}", flush=True)
 
-        raw = _groq(analysis_prompt,
-                    system="You are a video production AI. Respond in the exact "
-                    "plain-text format requested, nothing else.", max_tokens=3000)
-        vid_title, description, hashtags = _parse_meta_block(raw)
+        if ai_sections is None and not groq_down:
+            try:
+                # Avoid a second Groq call when the combined prompt already
+                # filled metadata, even if its section count was unusable.
+                if not description and not hashtags:
+                    vid_title, description, hashtags = _ai_generate_metadata(script, title)
+            except Exception as e:
+                print(f"  [ytprod] metadata skipped, continuing with narration: {e}",
+                      flush=True)
+        if ai_sections is not None:
+            sections_raw = ai_sections
         vid_title = vid_title or (title or "My Video")
-
-        sections_raw = _parse_section_blocks(raw)
-        if not sections_raw:
-            raise ValueError(f"No sections returned from AI: {raw[:300]}")
 
         # Build estimated timings from word counts (~140 wpm)
         total_words = sum(s.get("word_count", len(s.get("text","").split())) for s in sections_raw)
@@ -1046,6 +1193,48 @@ def _fmt_ch(sec: float) -> str:
     s = int(sec); m = s // 60; sc = s % 60
     return f"{m}:{sc:02d}"
 
+
+def _assembly_durations(sections: list, use_xfade: bool, xfade_dur: float = 0.5):
+    """Per-segment encode lengths.
+
+    Each crossfade shortens the timeline by xfade_dur, and the final merge
+    uses -shortest, so an uncompensated crossfade cuts the end of the
+    narration. The last segment is extended by the total fade time plus a
+    small slack so the video outlasts the audio and -shortest keeps the voice.
+    Very short sections get a shorter fade, or no fade, so ffmpeg doesn't
+    reject the filter graph.
+    """
+    natural = [max(float(s.get("end", 0)) - float(s.get("start", 0)), 0.5) for s in sections]
+    if not natural:
+        return [], 0.0, False
+    if use_xfade and len(natural) > 1:
+        shortest = min(natural)
+        if shortest < xfade_dur * 2:
+            xfade_dur = round(max(0.0, shortest * 0.35), 3)
+        if xfade_dur < 0.12:
+            use_xfade = False
+            xfade_dur = 0.0
+    durs = list(natural)
+    extra = 0.25
+    if use_xfade and len(durs) > 1:
+        extra += (len(durs) - 1) * xfade_dur
+    durs[-1] = round(durs[-1] + extra, 3)
+    return durs, xfade_dur, use_xfade
+
+
+def _ffmpeg_concat(seg_paths: list, job_dir: str, out_path: str):
+    concat_txt = os.path.join(job_dir, "concat.txt")
+    with open(concat_txt, "w") as f:
+        for p in seg_paths:
+            f.write(f"file '{p}'\n")
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt, "-c", "copy", out_path],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg concat: {result.stderr[-400:]}")
+
+
 def run_assembly(job_id: str):
     job       = JOBS[job_id]
     q         = job["assemble_queue"]
@@ -1057,13 +1246,14 @@ def run_assembly(job_id: str):
     xfade_dur = 0.5
 
     try:
+        seg_encode_durs, xfade_dur, use_xfade = _assembly_durations(
+            sections, use_xfade, xfade_dur)
         push({"phase": "assembling", "msg": f"Building {total} video segments…"})
         seg_paths = []
         seg_durations = []
 
-        for s in sections:
+        for s, dur in zip(sections, seg_encode_durs):
             idx     = s["idx"]
-            dur     = max(s["end"] - s["start"], 0.5)
             media   = s.get("media")
             ext     = (s.get("media_ext") or "").lower()
             seg_out = os.path.join(job_dir, f"seg_{idx:03d}.mp4")
@@ -1085,18 +1275,13 @@ def run_assembly(job_id: str):
         merged = os.path.join(job_dir, "merged.mp4")
 
         if use_xfade and len(seg_paths) > 1:
-            _ffmpeg_xfade_concat(seg_paths, seg_durations, merged, xfade_dur)
+            try:
+                _ffmpeg_xfade_concat(seg_paths, seg_durations, merged, xfade_dur)
+            except Exception as e:
+                print(f"  [ytprod] xfade failed, joining cuts directly: {e}", flush=True)
+                _ffmpeg_concat(seg_paths, job_dir, merged)
         else:
-            concat_txt = os.path.join(job_dir, "concat.txt")
-            with open(concat_txt, "w") as f:
-                for p in seg_paths:
-                    f.write(f"file '{p}'\n")
-            r = subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_txt, "-c", "copy", merged],
-                capture_output=True, text=True
-            )
-            if r.returncode != 0:
-                raise RuntimeError(f"ffmpeg concat: {r.stderr[-400:]}")
+            _ffmpeg_concat(seg_paths, job_dir, merged)
 
         # Mix music if provided
         narration  = job["audio_path"]
@@ -1176,7 +1361,11 @@ def generate():
     script     = data.get("script", "").strip()
     voice      = data.get("voice", "en-US-GuyNeural")
     title      = data.get("title", "").strip()
-    n_sections = max(2, min(20, int(data.get("sections", 6))))
+    try:
+        n_sections = int(data.get("sections", 6))
+    except (TypeError, ValueError):
+        n_sections = 6
+    n_sections = max(2, min(20, n_sections))
 
     if not script:
         return jsonify({"error": "No script provided"}), 400
@@ -1294,15 +1483,7 @@ def progress(job_id):
     if job.get("status") != "running" or job.get("queue") is None:
         return "Not found", 404
 
-    def stream():
-        q = job["queue"]
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            yield f"data: {item}\n\n"
-
-    return Response(stream(), mimetype="text/event-stream",
+    return Response(_iter_sse(job["queue"]), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -1425,6 +1606,10 @@ def assemble(job_id):
     if job.get("audio_path") and os.path.exists(job["audio_path"]):
         if job.get("status") not in ("audio_ready", "done", "error_assembly", "assembling"):
             job["status"] = "audio_ready"
+    if job["status"] == "assembling":
+        return jsonify({
+            "error": "Assembly is already running. Wait for it to finish, or reload the page.",
+        }), 409
     if job["status"] not in ("audio_ready", "done", "error_assembly"):
         return jsonify({"error": "Audio not ready yet — wait for narration, then try again."}), 400
 
@@ -1657,17 +1842,11 @@ def assemble_progress(job_id):
     if not job:
         return "Not found", 404
 
-    def stream():
-        q = job.get("assemble_queue")
-        if not q:
-            return
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            yield f"data: {item}\n\n"
+    q = job.get("assemble_queue")
+    if not q:
+        return "Not found", 404
 
-    return Response(stream(), mimetype="text/event-stream",
+    return Response(_iter_sse(q), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
@@ -2328,24 +2507,90 @@ $('genBtn').addEventListener('click', async () => {
   } catch(e) { showErr('Server error: '+e.message); }
 });
 
+// Live progress (SSE) goes quiet for minutes during narration and ffmpeg.
+// Proxies close that idle connection. Polling /job-state picks the job back
+// up instead of treating the drop as a failure and inviting a second run.
+function pollJob(jobId, opts) {
+  let tries = 0;
+  const maxTries = opts.maxTries || 180;
+  const timer = setInterval(async () => {
+    tries++;
+    let d = null;
+    let status = 0;
+    try {
+      const r = await fetch('/job-state/'+jobId);
+      status = r.status;
+      d = await r.json();
+    } catch (e) {
+      d = null;
+    }
+    if (d && opts.failed(d)) {
+      clearInterval(timer);
+      const msg = opts.failMessage
+        ? opts.failMessage(d)
+        : (d.error_message || 'This job failed.');
+      opts.onFail(msg);
+      return;
+    }
+    if (d && opts.ready(d)) {
+      clearInterval(timer);
+      opts.onReady(d);
+      return;
+    }
+    if ((!d || d.error) && status === 404 && tries > 6) {
+      clearInterval(timer);
+      opts.onFail('Job not found — reload the page and try again.');
+      return;
+    }
+    if (tries >= maxTries) {
+      clearInterval(timer);
+      opts.onFail('Still working, but this page lost live updates. Reload to resume.');
+    }
+  }, 5000);
+}
+
 function streamGenProgress(jobId) {
+  let settled = false;
   const es = new EventSource('/progress/'+jobId);
+  const finishOk = (d) => {
+    if (settled) return;
+    settled = true;
+    try { es.close(); } catch (e) {}
+    markStep('audio', true);
+    $('progressBar').classList.remove('indet');
+    $('progressBar').querySelector('i').style.width = '100%';
+    $('errMsg').classList.remove('show');
+    $('genBtn').disabled = false;
+    onAudioReady(jobId, d);
+  };
+  const finishErr = (msg) => {
+    if (settled) return;
+    settled = true;
+    try { es.close(); } catch (e) {}
+    showErr(msg || 'Unknown error');
+  };
   es.onmessage = ev => {
-    const d = JSON.parse(ev.data);
+    let d;
+    try { d = JSON.parse(ev.data); } catch (e) { return; }
     if (d.phase === 'analysing') markStep('analysing');
     else if (d.phase === 'analysed') markStep('analysing', true);
     else if (d.phase === 'audio') markStep('audio');
-    else if (d.phase === 'audio_done') {
-      es.close();
-      markStep('audio', true);
-      $('progressBar').classList.remove('indet');
-      $('progressBar').querySelector('i').style.width = '100%';
-      $('genBtn').disabled = false;
-      onAudioReady(jobId, d);
-    }
-    else if (d.phase === 'error') { es.close(); showErr(d.msg || 'Unknown error'); }
+    else if (d.phase === 'audio_done') finishOk(d);
+    else if (d.phase === 'error') finishErr(d.msg || 'Unknown error');
   };
-  es.onerror = () => { es.close(); $('genBtn').disabled = false; };
+  es.onerror = () => {
+    if (settled || es._polling) return;
+    es._polling = true;
+    try { es.close(); } catch (e) {}
+    $('errMsg').textContent = 'Connection dropped — checking whether audio is still generating…';
+    $('errMsg').classList.add('show');
+    pollJob(jobId, {
+      ready: (d) => d.status === 'audio_ready' || d.status === 'done',
+      failed: (d) => d.status === 'error' || d.status === 'error_assembly',
+      onReady: finishOk,
+      onFail: finishErr,
+    });
+  };
 }
 
 // ── after audio ready ────────────────────────────────────────────────
@@ -2872,9 +3117,28 @@ function assembleErr(msg) {
 }
 
 function streamAssemble(jobId) {
+  let settled = false;
   const es = new EventSource('/assemble-progress/'+jobId);
+  const finishOk = (chapters) => {
+    if (settled) return;
+    settled = true;
+    try { es.close(); } catch (e) {}
+    $('assembleBar').classList.remove('indet');
+    $('assembleBar').querySelector('i').style.width = '100%';
+    $('assembleMsg').style.color = '';
+    $('assembleMsg').textContent = 'Video ready!';
+    $('assembleBtn').disabled = false;
+    onVideoReady(jobId, chapters || '');
+  };
+  const finishErr = (msg) => {
+    if (settled) return;
+    settled = true;
+    try { es.close(); } catch (e) {}
+    assembleErr(msg);
+  };
   es.onmessage = ev => {
-    const d = JSON.parse(ev.data);
+    let d;
+    try { d = JSON.parse(ev.data); } catch (e) { return; }
     $('assembleMsg').style.color = '';
     if (d.phase === 'assembling') {
       $('assembleMsg').textContent = d.msg;
@@ -2890,17 +3154,32 @@ function streamAssemble(jobId) {
       $('assembleBar').querySelector('i').style.width = '92%';
       $('assembleMsg').textContent = d.msg;
     } else if (d.phase === 'done') {
-      es.close();
-      $('assembleBar').querySelector('i').style.width = '100%';
-      $('assembleMsg').textContent = '&#10003; Video ready!';
-      $('assembleBtn').disabled = false;
-      onVideoReady(jobId, d.chapters || '');
+      finishOk(d.chapters || '');
     } else if (d.phase === 'error') {
-      es.close();
-      assembleErr(d.msg);
+      finishErr(d.msg);
     }
   };
-  es.onerror = () => { es.close(); $('assembleBtn').disabled = false; };
+  es.onerror = () => {
+    if (settled || es._polling) return;
+    es._polling = true;
+    try { es.close(); } catch (e) {}
+    $('assembleMsg').style.color = '';
+    $('assembleMsg').textContent = 'Connection dropped — assembly may still be running…';
+    // status === 'done' only. has_video stays true during a re-assemble
+    // because the previous video.mp4 is still on disk.
+    pollJob(jobId, {
+      maxTries: 240,
+      ready: (d) => d.status === 'done',
+      failed: (d) => d.status === 'error_assembly' || d.status === 'error' || d.status === 'audio_ready',
+      failMessage: (d) => {
+        if (d.status === 'audio_ready')
+          return 'Assembly stopped before the video was ready. Click Assemble again.';
+        return d.error_message || 'This job failed.';
+      },
+      onReady: (d) => finishOk(d.chapters || ''),
+      onFail: finishErr,
+    });
+  };
 }
 
 function onVideoReady(jobId, chapters) {
