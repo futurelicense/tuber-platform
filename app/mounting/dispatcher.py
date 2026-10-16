@@ -56,6 +56,7 @@ YTPROD_ROUTES = [
     "/result/",
     "/download/",
     "/job-state/",
+    "/voice-preview",
 ]
 
 

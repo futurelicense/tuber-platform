@@ -104,8 +104,29 @@ def _iter_sse(q, heartbeat: float = 15.0):
 _JOB_PERSIST_KEYS = (
     "status", "script", "voice", "title", "description", "hashtags",
     "sections", "chapters", "error_message", "xfade", "music_vol",
-    "clip_prefill",
+    "clip_prefill", "voice_rate", "voice_pitch",
+    "viz_style", "viz_placement", "viz_opacity",
 )
+
+
+_VOICE_RE = re.compile(r"^[a-z]{2,3}-[A-Z]{2}-[A-Za-z]+Neural$")
+_RATE_RE  = re.compile(r"^[+-]\d{1,2}%$")
+_PITCH_RE = re.compile(r"^[+-]\d{1,2}Hz$")
+
+
+def _clean_prosody(rate, pitch) -> dict:
+    """edge-tts rate ("+10%") and pitch ("-5Hz"); anything malformed → neutral."""
+    rate = str(rate or "").strip()
+    pitch = str(pitch or "").strip()
+    return {
+        "voice_rate": rate if _RATE_RE.match(rate) else "+0%",
+        "voice_pitch": pitch if _PITCH_RE.match(pitch) else "+0Hz",
+    }
+
+
+def _tts_prosody(job: dict) -> dict:
+    p = _clean_prosody(job.get("voice_rate"), job.get("voice_pitch"))
+    return {"rate": p["voice_rate"], "pitch": p["voice_pitch"]}
 
 
 def _job_dir(job_id: str) -> str:
@@ -407,6 +428,11 @@ def _hydrate_job(job_id: str):
         "xfade": data.get("xfade", True),
         "music_vol": data.get("music_vol", 0.15),
         "clip_prefill": data.get("clip_prefill"),
+        "voice_rate": data.get("voice_rate") or "+0%",
+        "voice_pitch": data.get("voice_pitch") or "+0Hz",
+        "viz_style": data.get("viz_style") or "none",
+        "viz_placement": data.get("viz_placement") or "full",
+        "viz_opacity": data.get("viz_opacity", 0.9),
     }
     # If we only had an early "running" stub, promote once narration exists.
     if job["status"] not in ("audio_ready", "done", "error_assembly") and audio_path:
@@ -804,9 +830,9 @@ def _make_segment(media_path: str, duration: float, out_path: str, is_image: boo
     if result.returncode != 0:
         raise RuntimeError(f"Segment {out_path}: {result.stderr[-300:]}")
 
-def _make_placeholder(duration: float, idx: int, out_path: str):
+def _make_placeholder(duration: float, idx: int, out_path: str, black: bool = False):
     colours = ["0x1a1a2e","0x16213e","0x0f3460","0x533483","0x2c2c54","0x1a3a4a","0x2d1b2e","0x1b2d2e"]
-    c = colours[idx % len(colours)]
+    c = "black" if black else colours[idx % len(colours)]
     cmd = [
         "ffmpeg", "-y",
         "-f", "lavfi", "-i", f"color=c={c}:size=1920x1080:rate=25",
@@ -1051,7 +1077,8 @@ SCRIPT:
                 raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
 
             async def _tts():
-                communicate = edge_tts.Communicate(script, voice, receive_timeout=300)
+                communicate = edge_tts.Communicate(
+                    script, voice, receive_timeout=300, **_tts_prosody(job))
                 with open(audio_path, "wb") as af:
                     async for chunk in communicate.stream():
                         if chunk.get("type") == "audio":
@@ -1146,7 +1173,8 @@ def run_generation_from_sections(job_id: str, sections_text: list, script_for_tt
         audio_path = os.path.join(job_dir, "narration.mp3")
 
         async def _tts():
-            communicate = edge_tts.Communicate(script_for_tts, voice, receive_timeout=300)
+            communicate = edge_tts.Communicate(
+                script_for_tts, voice, receive_timeout=300, **_tts_prosody(job))
             with open(audio_path, "wb") as af:
                 async for chunk in communicate.stream():
                     if chunk.get("type") == "audio":
@@ -1235,6 +1263,167 @@ def _ffmpeg_concat(seg_paths: list, job_dir: str, out_path: str):
         raise RuntimeError(f"ffmpeg concat: {result.stderr[-400:]}")
 
 
+# ─── audio visualizer ────────────────────────────────────────────────
+# Audio-reactive glow layer rendered from the final mix and screen-blended
+# over the assembled video. Screen over black is a no-op, so the layer only
+# lights up where the wave is; sections without media fall back to black so
+# the visualizer becomes their whole background.
+VIZ_STYLES     = ("none", "neon", "bars", "aurora")
+VIZ_PLACEMENTS = ("full", "band")
+_VIZ_W, _VIZ_H = 960, 540          # rendered small, upscaled — glow hides it
+_VIZ_SR        = 24000             # 960 samples per 25fps frame = 1 px per sample
+
+
+def _viz_gradient(stops: list, vertical: bool, label: str) -> str:
+    """One-frame RGB gradient (looped), evenly spaced stops of (r, g, b)."""
+    axis = "Y/H" if vertical else "X/W"
+    n = len(stops) - 1
+
+    def chan(c):
+        expr = str(stops[-1][c])
+        for i in range(n - 1, -1, -1):
+            a, b = stops[i][c], stops[i + 1][c]
+            seg = f"{a}+({b}-{a})*({axis}*{n}-{i})"
+            expr = f"if(lt({axis}\\,{(i + 1) / n:.4f})\\,{seg}\\,{expr})"
+        return expr
+
+    return (f"color=c=black:s={_VIZ_W}x{_VIZ_H}:r=25:d=1,format=rgb24,"
+            f"geq=r='{chan(0)}':g='{chan(1)}':b='{chan(2)}',"
+            f"loop=loop=-1:size=1,format=rgba{label}")
+
+
+def _viz_carrier_waves(src: str, carriers: list, tag: str, height: int) -> list:
+    """Smooth flowing strands: the narration's loudness envelope drives the
+    amplitude of slow synthetic carriers, so the shape stays a clean curve
+    instead of raw speech jitter. Returns filter chains ending in [{tag}w]."""
+    env = (f"{src}aformat=channel_layouts=mono,aresample=8000,aeval=abs(val(0)),"
+           f"lowpass=f=8,aresample=200,lowpass=f=4,lowpass=f=4,"
+           f"aresample={_VIZ_SR},volume=4.5,alimiter=limit=0.6,"
+           f"asplit={len(carriers)}" + "".join(f"[{tag}e{i}]" for i in range(len(carriers))))
+    parts = [env]
+    for i, (expr, vol) in enumerate(carriers):
+        parts.append(f"aevalsrc=exprs='{expr}':s={_VIZ_SR}:c=mono[{tag}c{i}]")
+        parts.append(
+            f"[{tag}e{i}][{tag}c{i}]amultiply,volume={vol},"
+            f"showwaves=s={_VIZ_W}x{height}:mode=p2p:rate=25:draw=full:colors=white,"
+            f"format=gray[{tag}s{i}]")
+    prev = f"[{tag}s0]"
+    for i in range(1, len(carriers)):
+        out = f"[{tag}m{i}]"
+        parts.append(f"{prev}[{tag}s{i}]blend=all_mode=lighten{out}")
+        prev = out
+    parts.append(f"{prev}null[{tag}w]")
+    return parts
+
+
+def _viz_filter(style: str, placement: str, out_w: int = 1920, out_h: int = 1080) -> str:
+    """Filter chains that read [vizin] (audio) and emit [vizout], an RGB
+    layer of out_w×out_h on black, ready to screen-blend over the video."""
+    W, H = _VIZ_W, _VIZ_H
+    parts = []
+    if style == "neon":
+        # Orange → violet → blue strands with trails (layered silk waves).
+        parts += _viz_carrier_waves("[vizin]", [
+            ("0.5*sin(2*PI*50.3*t)+0.3*sin(2*PI*75.9*t+1)+0.2*sin(2*PI*125.6*t+2)", 1.0),
+            ("0.4*sin(2*PI*50.7*t+2)+0.35*sin(2*PI*100.4*t)+0.2*sin(2*PI*151.2*t+1)", 0.8),
+            ("0.6*sin(2*PI*49.6*t+4)+0.25*sin(2*PI*74.7*t+3)", 1.2),
+        ], "n", H)
+        parts.append("[nw]lagfun=decay=0.92,split[vm][vg]")
+        parts.append("[vg]gblur=sigma=8,lutyuv=y=val*1.6[vgl]")
+        parts.append("[vm][vgl]blend=all_mode=addition[vmask]")
+        parts.append(_viz_gradient([(255, 90, 31), (176, 60, 255), (30, 144, 255)], False, "[vgrad]"))
+    elif style == "aurora":
+        # Stacked mesh of strands, lime → magenta → violet → cyan top to bottom.
+        parts.append("[vizin]asplit=3[viza0][viza1][viza2]")
+        for k, (tag, y, ph) in enumerate((("a", 20, 0), ("b", 140, 2), ("c", 250, 4))):
+            parts += _viz_carrier_waves(f"[viza{k}]", [
+                (f"0.55*sin(2*PI*50.2*t+{ph})+0.3*sin(2*PI*99.7*t+{ph + 1})", 1.0),
+                (f"0.5*sin(2*PI*49.8*t+{ph + 2})+0.3*sin(2*PI*75.3*t)", 0.7),
+            ], tag, H // 2)
+            parts.append(f"[{tag}w]pad={W}:{H}:0:{y}[{tag}p]")
+        parts.append("[ap][bp]blend=all_mode=lighten[abp]")
+        parts.append("[abp][cp]blend=all_mode=lighten,lagfun=decay=0.96,split[vm][vg]")
+        parts.append("[vg]gblur=sigma=5,lutyuv=y=val*1.4[vgl]")
+        parts.append("[vm][vgl]blend=all_mode=addition[vmask]")
+        parts.append(_viz_gradient(
+            [(212, 255, 58), (255, 63, 164), (122, 60, 255), (42, 168, 255)], True, "[vgrad]"))
+    else:  # bars
+        # Mirrored LED equalizer with a floor reflection, violet ↔ blue.
+        parts.append(
+            f"[vizin]aformat=channel_layouts=mono,aresample=11025,dynaudnorm,volume=2,"
+            f"showfreqs=s=32x54:mode=bar:ascale=sqrt:fscale=lin:win_size=64:averaging=2:"
+            f"colors=white:rate=25,format=gray,"
+            f"scale={W // 2}:{H // 2}:flags=neighbor,drawgrid=w=15:h=5:t=3:c=black,"
+            # drawgrid's "black" is limited-range luma 16; clamp the noise floor
+            # and the grid to true 0 so no faint box shows through the blend.
+            f"lutyuv=y='if(lt(val\\,40)\\,0\\,val)',split[bl][br]")
+        parts.append("[br]hflip[bf]")
+        parts.append("[bf][bl]hstack,split[bt][bb]")
+        parts.append("[bb]vflip,lutyuv=y=val*0.3[brf]")
+        parts.append("[bt][brf]vstack,split[vm][vg]")
+        parts.append("[vg]gblur=sigma=8[vgl]")
+        parts.append("[vm][vgl]blend=all_mode=screen[vmask]")
+        parts.append(_viz_gradient([(210, 75, 255), (47, 123, 255), (210, 75, 255)], True, "[vgrad]"))
+
+    if placement == "band":
+        band_h = out_h // 3
+        place = (f"scale={out_w}:{band_h}:flags=bicubic,"
+                 f"pad={out_w}:{out_h}:0:{out_h - band_h}")
+    else:
+        place = f"scale={out_w}:{out_h}:flags=bicubic"
+    parts.append("[vmask]format=gray[vmg]")
+    parts.append("[vgrad][vmg]alphamerge[vcol]")
+    parts.append(f"color=c=black:s={W}x{H}:r=25[vbg]")
+    parts.append(f"[vbg][vcol]overlay=shortest=1,{place},format=gbrp[vizout]")
+    return ";".join(parts)
+
+
+def _merge_with_visualizer(video: str, audio: str, out_path: str,
+                           style: str, placement: str, opacity: float,
+                           total_dur: float = 0.0, on_progress=None):
+    """Final merge that also renders the visualizer from the mixed audio.
+    It re-encodes the whole video (~realtime), so report percent as it goes."""
+    graph = (
+        "[1:a]asplit=2[aout][vizin];"
+        + _viz_filter(style, placement) + ";"
+        + "[0:v]scale=1920:1080,setsar=1,format=gbrp[base];"
+        + f"[base][vizout]blend=all_mode=screen:all_opacity={opacity:.2f},"
+          "format=yuv420p[vout]"
+    )
+    proc = subprocess.Popen([
+        "ffmpeg", "-y", "-nostats", "-progress", "pipe:1",
+        "-i", video, "-i", audio,
+        "-filter_complex", graph,
+        "-map", "[vout]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-movflags", "+faststart", out_path,
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # Drain stderr on a thread so a chatty encoder can't fill the pipe and stall.
+    err_tail = []
+    def _drain():
+        for line in proc.stderr:
+            err_tail.append(line)
+            del err_tail[:-40]
+    t = threading.Thread(target=_drain, daemon=True)
+    t.start()
+    last_pct = -1
+    for line in proc.stdout:
+        if not (on_progress and total_dur > 0 and line.startswith("out_time_us=")):
+            continue
+        try:
+            pct = int(min(99, int(line.split("=", 1)[1]) / 1e6 / total_dur * 100))
+        except ValueError:
+            continue
+        if pct >= last_pct + 2:
+            last_pct = pct
+            on_progress(pct)
+    proc.wait()
+    t.join(timeout=5)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg visualizer merge: {''.join(err_tail)[-500:]}")
+
+
 def run_assembly(job_id: str):
     job       = JOBS[job_id]
     q         = job["assemble_queue"]
@@ -1244,6 +1433,8 @@ def run_assembly(job_id: str):
     total     = len(sections)
     use_xfade = job.get("xfade", True)
     xfade_dur = 0.5
+    viz_style = job.get("viz_style") or "none"
+    viz_full  = viz_style != "none" and job.get("viz_placement", "full") == "full"
 
     try:
         seg_encode_durs, xfade_dur, use_xfade = _assembly_durations(
@@ -1265,7 +1456,7 @@ def run_assembly(job_id: str):
                 is_image = ext in (".jpg", ".jpeg", ".png", ".gif", ".webp")
                 _make_segment(media, dur, seg_out, is_image)
             else:
-                _make_placeholder(dur, idx, seg_out)
+                _make_placeholder(dur, idx, seg_out, black=viz_full)
 
             actual_dur = _video_duration(seg_out) or dur
             seg_paths.append(seg_out)
@@ -1313,14 +1504,25 @@ def run_assembly(job_id: str):
             final_audio = narration
 
         video_path = os.path.join(job_dir, "video.mp4")
-        r = subprocess.run(
-            ["ffmpeg", "-y", "-i", merged, "-i", final_audio,
-             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-             "-shortest", "-movflags", "+faststart", video_path],
-            capture_output=True, text=True
-        )
-        if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg final merge: {r.stderr[-400:]}")
+        if viz_style != "none":
+            push({"phase": "visualizer",
+                  "msg": "Rendering audio visualizer — about as long as the video…"})
+            _merge_with_visualizer(
+                merged, final_audio, video_path, viz_style,
+                job.get("viz_placement", "full"), float(job.get("viz_opacity", 0.9)),
+                total_dur=audio_dur,
+                on_progress=lambda pct: push({
+                    "phase": "visualizer", "pct": pct,
+                    "msg": f"Rendering audio visualizer… {pct}%"}))
+        else:
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-i", merged, "-i", final_audio,
+                 "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                 "-shortest", "-movflags", "+faststart", video_path],
+                capture_output=True, text=True
+            )
+            if r.returncode != 0:
+                raise RuntimeError(f"ffmpeg final merge: {r.stderr[-400:]}")
 
         # Chapter markers
         chapters = "\n".join(
@@ -1378,6 +1580,7 @@ def generate():
         "queue": queue.Queue(),
         "script": script,
         "voice": voice,
+        **_clean_prosody(data.get("rate"), data.get("pitch")),
         "sections": [],
         "audio_path": None,
         "video_path": None,
@@ -1388,7 +1591,8 @@ def generate():
     return jsonify({"job_id": job_id})
 
 
-def _start_generation_from_sections(sections_text, voice, title, description, hashtags):
+def _start_generation_from_sections(sections_text, voice, title, description, hashtags,
+                                    rate=None, pitch=None):
     """Create a job and spawn run_generation_from_sections. Callable directly
     in-process (no Flask request context needed — the platform's producer_scout
     blueprint calls this straight from sys.modules, same pattern as the
@@ -1408,6 +1612,7 @@ def _start_generation_from_sections(sections_text, voice, title, description, ha
         "queue": queue.Queue(),
         "script": script_for_tts,
         "voice": voice,
+        **_clean_prosody(rate, pitch),
         "sections": [],
         "audio_path": None,
         "video_path": None,
@@ -1431,10 +1636,48 @@ def generate_from_sections():
             title=(data.get("title") or "").strip(),
             description=data.get("description", ""),
             hashtags=data.get("hashtags", []),
+            rate=data.get("rate"),
+            pitch=data.get("pitch"),
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"job_id": job_id})
+
+
+_PREVIEW_LINE = ("Here's a quick preview of how this voice will sound "
+                 "narrating your next video.")
+
+
+@app.route("/voice-preview", methods=["POST"])
+def voice_preview():
+    """Short TTS sample so producers can audition a voice before generating."""
+    data = request.get_json(silent=True) or {}
+    voice = (data.get("voice") or "").strip()
+    if not _VOICE_RE.match(voice):
+        return jsonify({"error": "Unknown voice"}), 400
+    if not _EDGE_TTS:
+        return jsonify({"error": "edge-tts not installed"}), 500
+    pros = _clean_prosody(data.get("rate"), data.get("pitch"))
+
+    async def _tts():
+        buf = bytearray()
+        communicate = edge_tts.Communicate(
+            _PREVIEW_LINE, voice, receive_timeout=60,
+            rate=pros["voice_rate"], pitch=pros["voice_pitch"])
+        async for chunk in communicate.stream():
+            if chunk.get("type") == "audio":
+                buf += chunk["data"]
+        return bytes(buf)
+
+    try:
+        audio = asyncio.run(_tts())
+    except Exception as e:
+        return jsonify({"error": f"Preview failed: {e}"}), 502
+    if not audio:
+        return jsonify({"error": "Preview returned no audio"}), 502
+    resp = Response(audio, mimetype="audio/mpeg")
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 @app.route("/job-state/<job_id>")
@@ -1464,6 +1707,11 @@ def job_state(job_id):
         "has_video": bool(job.get("video_path") and os.path.exists(job["video_path"] or "")),
         "has_music": bool(job.get("music_path") and os.path.exists(job["music_path"] or "")),
         "music_vol": job.get("music_vol", 0.15),
+        "voice_rate": job.get("voice_rate", "+0%"),
+        "voice_pitch": job.get("voice_pitch", "+0Hz"),
+        "viz_style": job.get("viz_style", "none"),
+        "viz_placement": job.get("viz_placement", "full"),
+        "viz_opacity": job.get("viz_opacity", 0.9),
         "chapters": job.get("chapters"),
         "error_message": job.get("error_message"),
         # Written by the platform's producer_scout clip-extraction thread
@@ -1631,6 +1879,14 @@ def assemble(job_id):
 
     job["xfade"]          = bool(data.get("xfade", True))
     job["music_vol"]      = float(data.get("music_vol", 0.15))
+    style = (data.get("viz_style") or "none").strip().lower()
+    placement = (data.get("viz_placement") or "full").strip().lower()
+    job["viz_style"]      = style if style in VIZ_STYLES else "none"
+    job["viz_placement"]  = placement if placement in VIZ_PLACEMENTS else "full"
+    try:
+        job["viz_opacity"] = max(0.2, min(1.0, float(data.get("viz_opacity", 0.9))))
+    except (TypeError, ValueError):
+        job["viz_opacity"] = 0.9
     if not job.get("music_path"):
         job["music_path"] = _find_music(_job_dir(job_id))
     job["status"]         = "assembling"
@@ -2101,6 +2357,35 @@ video{width:100%;border-radius:8px;background:#000;display:block}
   -webkit-appearance:none;width:12px;height:12px;border-radius:50%;
   background:var(--amber);cursor:pointer}
 
+/* ── voice picker ── */
+.voice-pick{display:flex;gap:5px}
+.voice-pick select{flex:1;min-width:0}
+.voice-play{flex:none;width:30px;background:var(--panel3);border:1px solid var(--lineb);
+  color:var(--muted);border-radius:6px;cursor:pointer;font-size:11px}
+.voice-play:hover{color:var(--amber);border-color:var(--amber)}
+.voice-play.busy{opacity:.5;cursor:wait}
+
+/* ── visualizer ── */
+.viz-zone{margin-bottom:8px}
+.viz-head{font-size:11px;color:var(--muted);margin-bottom:5px}
+.viz-styles{display:flex;gap:5px;flex-wrap:wrap}
+.viz-chip{display:flex;align-items:center;gap:5px;background:var(--ink);
+  border:1px solid var(--lineb);color:var(--muted);border-radius:6px;
+  padding:4px 8px;font-size:11px;cursor:pointer}
+.viz-chip:hover{border-color:var(--purplel)}
+.viz-chip.on{border-color:var(--purple);color:#fff;background:rgba(124,58,237,.18)}
+.viz-chip .sw{display:inline-block;width:14px;height:10px;border-radius:2px}
+.sw-neon{background:linear-gradient(90deg,#ff5a1f,#b03cff,#1e90ff)}
+.sw-bars{background:repeating-linear-gradient(90deg,#d24bff 0 2px,transparent 2px 4px),
+  linear-gradient(#2f7bff,#d24bff)}
+.sw-aurora{background:linear-gradient(#d4ff3a,#ff3fa4,#7a3cff,#2aa8ff)}
+.viz-opts{display:none;align-items:center;gap:6px;margin-top:6px}
+.viz-opts.show{display:flex}
+.viz-opts select{width:auto;flex:none;padding:3px 24px 3px 7px;font-size:11px}
+.viz-opts input[type=range]{flex:1;accent-color:var(--purple)}
+.viz-note{display:none;font-size:10px;color:var(--faint);margin-top:5px;line-height:1.45}
+.viz-note.show{display:block}
+
 /* ── xfade row ── */
 .xfade-row{display:flex;align-items:center;gap:7px;margin-bottom:8px;
   font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
@@ -2150,23 +2435,69 @@ video{width:100%;border-radius:8px;background:#000;display:block}
     <div class="row2">
       <div class="field">
         <label>Voice</label>
+        <div class="voice-pick">
         <select id="voice">
-          <optgroup label="English (US)">
-            <option value="en-US-GuyNeural">Guy · Male, News</option>
-            <option value="en-US-JennyNeural">Jenny · Female</option>
-            <option value="en-US-AriaNeural">Aria · Female, Natural</option>
-            <option value="en-US-DavisNeural">Davis · Male, Casual</option>
-            <option value="en-US-TonyNeural">Tony · Male, Bold</option>
+          <optgroup label="English (US) · featured">
+            <option value="en-US-AndrewNeural">Andrew · M, warm & confident</option>
+            <option value="en-US-BrianNeural">Brian · M, casual & sincere</option>
+            <option value="en-US-AvaNeural">Ava · F, expressive & caring</option>
+            <option value="en-US-EmmaNeural">Emma · F, cheerful & clear</option>
+            <option value="en-US-GuyNeural" selected>Guy · M, passionate news</option>
+            <option value="en-US-ChristopherNeural">Christopher · M, authority</option>
           </optgroup>
-          <optgroup label="English (UK)">
-            <option value="en-GB-RyanNeural">Ryan · Male, British</option>
-            <option value="en-GB-SoniaNeural">Sonia · Female, British</option>
+          <optgroup label="English (US) · more">
+            <option value="en-US-AriaNeural">Aria · F, confident</option>
+            <option value="en-US-JennyNeural">Jenny · F, friendly</option>
+            <option value="en-US-MichelleNeural">Michelle · F, pleasant</option>
+            <option value="en-US-EricNeural">Eric · M, rational</option>
+            <option value="en-US-RogerNeural">Roger · M, lively</option>
+            <option value="en-US-SteffanNeural">Steffan · M, rational</option>
+            <option value="en-US-AnaNeural">Ana · F, child</option>
           </optgroup>
-          <optgroup label="English (Nigeria)">
-            <option value="en-NG-AbeoNeural">Abeo · Male, Nigerian</option>
-            <option value="en-NG-EzinneNeural">Ezinne · Female, Nigerian</option>
+          <optgroup label="Multilingual (reads other languages too)">
+            <option value="en-US-AndrewMultilingualNeural">Andrew · M, multilingual</option>
+            <option value="en-US-BrianMultilingualNeural">Brian · M, multilingual</option>
+            <option value="en-US-AvaMultilingualNeural">Ava · F, multilingual</option>
+            <option value="en-US-EmmaMultilingualNeural">Emma · F, multilingual</option>
+            <option value="en-AU-WilliamMultilingualNeural">William · M, Australian multilingual</option>
+          </optgroup>
+          <optgroup label="Africa">
+            <option value="en-NG-AbeoNeural">Abeo · M, Nigerian</option>
+            <option value="en-NG-EzinneNeural">Ezinne · F, Nigerian</option>
+            <option value="en-KE-ChilembaNeural">Chilemba · M, Kenyan</option>
+            <option value="en-KE-AsiliaNeural">Asilia · F, Kenyan</option>
+            <option value="en-ZA-LukeNeural">Luke · M, South African</option>
+            <option value="en-ZA-LeahNeural">Leah · F, South African</option>
+            <option value="en-TZ-ElimuNeural">Elimu · M, Tanzanian</option>
+            <option value="en-TZ-ImaniNeural">Imani · F, Tanzanian</option>
+          </optgroup>
+          <optgroup label="UK & Ireland">
+            <option value="en-GB-RyanNeural">Ryan · M, British</option>
+            <option value="en-GB-ThomasNeural">Thomas · M, British</option>
+            <option value="en-GB-SoniaNeural">Sonia · F, British</option>
+            <option value="en-GB-LibbyNeural">Libby · F, British</option>
+            <option value="en-GB-MaisieNeural">Maisie · F, British child</option>
+            <option value="en-IE-ConnorNeural">Connor · M, Irish</option>
+            <option value="en-IE-EmilyNeural">Emily · F, Irish</option>
+          </optgroup>
+          <optgroup label="Americas, Asia & Pacific">
+            <option value="en-CA-LiamNeural">Liam · M, Canadian</option>
+            <option value="en-CA-ClaraNeural">Clara · F, Canadian</option>
+            <option value="en-AU-NatashaNeural">Natasha · F, Australian</option>
+            <option value="en-NZ-MitchellNeural">Mitchell · M, New Zealand</option>
+            <option value="en-NZ-MollyNeural">Molly · F, New Zealand</option>
+            <option value="en-IN-PrabhatNeural">Prabhat · M, Indian</option>
+            <option value="en-IN-NeerjaExpressiveNeural">Neerja · F, Indian expressive</option>
+            <option value="en-SG-WayneNeural">Wayne · M, Singaporean</option>
+            <option value="en-SG-LunaNeural">Luna · F, Singaporean</option>
+            <option value="en-PH-JamesNeural">James · M, Filipino</option>
+            <option value="en-PH-RosaNeural">Rosa · F, Filipino</option>
+            <option value="en-HK-SamNeural">Sam · M, Hong Kong</option>
+            <option value="en-HK-YanNeural">Yan · F, Hong Kong</option>
           </optgroup>
         </select>
+        <button type="button" class="voice-play" id="voicePlay" title="Preview this voice">&#9654;</button>
+        </div>
       </div>
       <div class="field">
         <label>Sections</label>
@@ -2184,6 +2515,28 @@ video{width:100%;border-radius:8px;background:#000;display:block}
           <option value="16">16 sections</option>
           <option value="18">18 sections</option>
           <option value="20">20 sections</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Speed</label>
+        <select id="voiceRate">
+          <option value="-20%">Slow · −20%</option>
+          <option value="-10%">Relaxed · −10%</option>
+          <option value="+0%" selected>Normal</option>
+          <option value="+10%">Brisk · +10%</option>
+          <option value="+20%">Fast · +20%</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Pitch</label>
+        <select id="voicePitch">
+          <option value="-10Hz">Deeper</option>
+          <option value="-5Hz">Slightly deeper</option>
+          <option value="+0Hz" selected>Natural</option>
+          <option value="+5Hz">Slightly higher</option>
+          <option value="+10Hz">Higher</option>
         </select>
       </div>
     </div>
@@ -2273,6 +2626,26 @@ video{width:100%;border-radius:8px;background:#000;display:block}
         <span id="musicVolPct" style="font-size:10px;font-family:monospace;color:var(--muted);width:28px;flex:none">15%</span>
         <span onclick="clearMusic()" style="cursor:pointer;color:var(--faint);font-size:13px;flex:none;padding:0 2px" title="Remove music">&#10005;</span>
       </div>
+    </div>
+    <div class="viz-zone">
+      <div class="viz-head">&#127926; Audio visualizer</div>
+      <div class="viz-styles" id="vizStyles">
+        <button type="button" class="viz-chip on" data-style="none">Off</button>
+        <button type="button" class="viz-chip" data-style="neon"><i class="sw sw-neon"></i>Neon waves</button>
+        <button type="button" class="viz-chip" data-style="bars"><i class="sw sw-bars"></i>LED bars</button>
+        <button type="button" class="viz-chip" data-style="aurora"><i class="sw sw-aurora"></i>Aurora</button>
+      </div>
+      <div class="viz-opts" id="vizOpts">
+        <select id="vizPlacement" title="Where the visualizer sits">
+          <option value="full">Full frame</option>
+          <option value="band">Bottom band</option>
+        </select>
+        <span style="font-size:10px;color:var(--muted);flex:none">Glow</span>
+        <input type="range" id="vizOpacity" min="30" max="100" value="90"
+               oninput="$('vizOpacityPct').textContent=this.value+'%'">
+        <span id="vizOpacityPct" style="font-size:10px;font-family:monospace;color:var(--muted);width:30px;flex:none">90%</span>
+      </div>
+      <div class="viz-note" id="vizNote">Driven by your narration + music. Sections without media show the visualizer on black. Adds roughly the video's length to assembly time.</div>
     </div>
     <label class="xfade-row">
       <input type="checkbox" id="xfadeToggle" checked>
@@ -2445,6 +2818,16 @@ function restoreFormFromJob(d) {
     const v = $('voice');
     if ([...v.options].some(o => o.value === d.voice)) v.value = d.voice;
   }
+  for (const [id, val] of [['voiceRate', d.voice_rate], ['voicePitch', d.voice_pitch],
+                           ['vizPlacement', d.viz_placement]]) {
+    const el = $(id);
+    if (val && [...el.options].some(o => o.value === val)) el.value = val;
+  }
+  if (d.viz_style) setVizStyle(d.viz_style);
+  if (d.viz_opacity != null) {
+    $('vizOpacity').value = Math.round(Number(d.viz_opacity) * 100);
+    $('vizOpacityPct').textContent = $('vizOpacity').value + '%';
+  }
   if (d.sections && d.sections.length) {
     const n = String(d.sections.length);
     const sel = $('nsections');
@@ -2496,6 +2879,8 @@ $('genBtn').addEventListener('click', async () => {
       body: JSON.stringify({
         script,
         voice:    $('voice').value,
+        rate:     $('voiceRate').value,
+        pitch:    $('voicePitch').value,
         title:    $('vidTitle').value.trim(),
         sections: $('nsections').value,
       }),
@@ -3069,6 +3454,52 @@ $('thumbBtn').addEventListener('click', async () => {
 
 let JOBS_title = '';
 
+// ── audio visualizer ─────────────────────────────────────────────────
+var _vizStyle = 'none';  // var: restoreFormFromJob may run before this line
+function setVizStyle(style) {
+  _vizStyle = style;
+  document.querySelectorAll('#vizStyles .viz-chip').forEach(b =>
+    b.classList.toggle('on', b.dataset.style === style));
+  const on = style !== 'none';
+  $('vizOpts').classList.toggle('show', on);
+  $('vizNote').classList.toggle('show', on);
+}
+document.querySelectorAll('#vizStyles .viz-chip').forEach(b =>
+  b.addEventListener('click', () => setVizStyle(b.dataset.style)));
+
+// ── voice preview ────────────────────────────────────────────────────
+let _previewAudio = null;
+$('voicePlay').addEventListener('click', async () => {
+  const btn = $('voicePlay');
+  if (btn.classList.contains('busy')) return;
+  if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
+  btn.classList.add('busy');
+  try {
+    const r = await fetch('/voice-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        voice: $('voice').value,
+        rate:  $('voiceRate').value,
+        pitch: $('voicePitch').value,
+      }),
+    });
+    if (!r.ok) {
+      let msg = 'Preview failed';
+      try { msg = (await r.json()).error || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+    const url = URL.createObjectURL(await r.blob());
+    _previewAudio = new Audio(url);
+    _previewAudio.onended = () => URL.revokeObjectURL(url);
+    await _previewAudio.play();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.classList.remove('busy');
+  }
+});
+
 $('assembleBtn').addEventListener('click', async () => {
   if (!_jobId) return;
   $('assembleBtn').disabled = true;
@@ -3089,6 +3520,9 @@ $('assembleBtn').addEventListener('click', async () => {
     })),
     xfade:     $('xfadeToggle').checked,
     music_vol: parseFloat($('musicVol').value) / 100,
+    viz_style:     _vizStyle,
+    viz_placement: $('vizPlacement').value,
+    viz_opacity:   parseFloat($('vizOpacity').value) / 100,
   };
 
   try {
@@ -3152,6 +3586,12 @@ function streamAssemble(jobId) {
       $('assembleMsg').textContent = d.msg;
     } else if (d.phase === 'audio_merge') {
       $('assembleBar').querySelector('i').style.width = '92%';
+      $('assembleMsg').textContent = d.msg;
+    } else if (d.phase === 'visualizer') {
+      // Visualizer render is the long tail — map its 0–100% onto 92–99%.
+      const pct = 92 + Math.round((d.pct || 0) * 0.07);
+      $('assembleBar').classList.remove('indet');
+      $('assembleBar').querySelector('i').style.width = pct+'%';
       $('assembleMsg').textContent = d.msg;
     } else if (d.phase === 'done') {
       finishOk(d.chapters || '');
