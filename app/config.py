@@ -6,9 +6,16 @@ def _normalized_database_uri():
     # scheme, which SQLAlchemy 1.4+ no longer recognizes — it raises
     # NoSuchModuleError unless rewritten to "postgresql://". Without this,
     # every DB-touching route 500s while /healthz (no DB query) still passes.
+    #
+    # Name the driver explicitly too: SQLAlchemy 2.1 switched the default for a
+    # bare "postgresql://" from psycopg2 to psycopg 3, which isn't installed —
+    # every fresh build since then crashed on boot with "No module named
+    # 'psycopg'". An explicit "postgresql+<driver>://" URL is left alone.
     uri = os.environ.get("DATABASE_URL", "sqlite:///" + os.path.join(os.getcwd(), "dev.db"))
-    if uri.startswith("postgres://"):
-        uri = "postgresql://" + uri[len("postgres://"):]
+    for bare in ("postgres://", "postgresql://"):
+        if uri.startswith(bare):
+            uri = "postgresql+psycopg2://" + uri[len(bare):]
+            break
     return uri
 
 
