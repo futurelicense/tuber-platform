@@ -92,5 +92,31 @@ class AssemblyDurationTests(unittest.TestCase):
         self.assertGreater(video_after_fades, 2.0)
 
 
+
+class DialogueParseTests(unittest.TestCase):
+    def test_letter_labels_alternate_voices(self):
+        turns = ytprod._parse_dialogue("A: Welcome back.\nB: Glad to be here.\nA: Let's start.")
+        self.assertEqual(turns, [(0, "Welcome back."), (1, "Glad to be here."), (0, "Let's start.")])
+
+    def test_names_and_markdown_labels(self):
+        turns = ytprod._parse_dialogue("**Tunde:** Hello.\n\n[Sarah]: Hi Tunde.")
+        self.assertEqual(turns, [(0, "Hello."), (1, "Hi Tunde.")])
+
+    def test_untagged_lines_continue_current_speaker(self):
+        turns = ytprod._parse_dialogue("Host A: First line.\nStill A here.\nHost B: Now B.")
+        self.assertEqual(turns, [(0, "First line. Still A here."), (1, "Now B.")])
+
+    def test_third_label_alternates(self):
+        turns = ytprod._parse_dialogue("A: one\nB: two\nC: three")
+        self.assertEqual([spk for spk, _ in turns], [0, 1, 0])
+
+    def test_plain_script_is_not_dialogue(self):
+        self.assertEqual(ytprod._parse_dialogue("Just a narration.\n\nAnother paragraph."), [])
+
+    def test_bad_second_voice_is_dropped(self):
+        self.assertIsNone(ytprod._clean_voice("en-US-Guy; rm -rf"))
+        self.assertEqual(ytprod._clean_voice("en-NG-EzinneNeural"), "en-NG-EzinneNeural")
+
+
 if __name__ == "__main__":
     unittest.main()

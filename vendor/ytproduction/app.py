@@ -104,7 +104,7 @@ def _iter_sse(q, heartbeat: float = 15.0):
 _JOB_PERSIST_KEYS = (
     "status", "script", "voice", "title", "description", "hashtags",
     "sections", "chapters", "error_message", "xfade", "music_vol",
-    "clip_prefill", "voice_rate", "voice_pitch",
+    "clip_prefill", "voice_rate", "voice_pitch", "voice_b",
     "viz_style", "viz_placement", "viz_opacity",
 )
 
@@ -127,6 +127,110 @@ def _clean_prosody(rate, pitch) -> dict:
 def _tts_prosody(job: dict) -> dict:
     p = _clean_prosody(job.get("voice_rate"), job.get("voice_pitch"))
     return {"rate": p["voice_rate"], "pitch": p["voice_pitch"]}
+
+
+def _clean_voice(voice) -> str | None:
+    voice = str(voice or "").strip()
+    return voice if _VOICE_RE.match(voice) else None
+
+
+# ── two-voice dialogue ──
+# A line opening with a short label and a colon ("A:", "Host B:", "Tunde:",
+# "**Sarah:**") starts a new turn. The first label heard gets voice A, the
+# second voice B, and any further labels alternate. Untagged lines continue
+# the current speaker. Only used when the producer picks a second voice, so
+# ordinary scripts with "Note:" in them are never split.
+_SPEAKER_RE = re.compile(
+    r"^\s*[*_\[(]*\s*([A-Za-z][A-Za-z0-9 .'\-]{0,23}?)\s*[*_\])]*\s*[:：]\s*[*_]*\s*")
+_DIALOGUE_GAP = 0.35   # seconds of air between turns
+_TRIM_SILENCE = "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05"
+
+
+def _parse_dialogue(script: str) -> list:
+    """[(speaker_index, text), ...] — empty when the script has no labels."""
+    turns, order, cur = [], {}, None
+    for line in (script or "").splitlines():
+        m = _SPEAKER_RE.match(line)
+        if m:
+            label = m.group(1).strip().lower()
+            if label not in order:
+                order[label] = len(order)
+            cur = order[label] % 2
+            line = line[m.end():]
+        line = line.strip()
+        if not line:
+            continue
+        if cur is None:
+            cur = 0
+        if turns and turns[-1][0] == cur:
+            turns[-1] = (cur, turns[-1][1] + " " + line)
+        else:
+            turns.append((cur, line))
+    return turns if order else []
+
+
+async def _tts_to_file(text: str, voice: str, path: str, job: dict) -> None:
+    communicate = edge_tts.Communicate(text, voice, receive_timeout=300, **_tts_prosody(job))
+    with open(path, "wb") as af:
+        async for chunk in communicate.stream():
+            if chunk.get("type") == "audio":
+                af.write(chunk["data"])
+    if not os.path.getsize(path):
+        raise RuntimeError(f"TTS returned no audio for voice {voice}")
+
+
+def _synthesize_narration(job: dict, script: str, voice: str, audio_path: str, push=None) -> None:
+    """Write narration.mp3 — one voice, or alternating turns when the job has
+    a second voice and the script carries speaker labels."""
+    if not _EDGE_TTS:
+        raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
+    voice_b = _clean_voice(job.get("voice_b"))
+    turns = _parse_dialogue(script) if voice_b else []
+    if not turns:
+        asyncio.run(_tts_to_file(script, voice, audio_path, job))
+        print(f"  [ytprod] TTS done: {os.path.getsize(audio_path):,} bytes", flush=True)
+        return
+
+    voices = (voice, voice_b)
+    work = os.path.join(os.path.dirname(audio_path), "_dialogue")
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(work)
+    parts = [os.path.join(work, f"turn_{i:04d}.mp3") for i in range(len(turns))]
+    if push:
+        push({"phase": "audio",
+              "msg": f"Generating dialogue — {len(turns)} turns, 2 voices…"})
+
+    async def _all():
+        sem = asyncio.Semaphore(4)   # edge-tts throttles bursts
+        async def one(i, spk, text):
+            async with sem:
+                await _tts_to_file(text, voices[spk], parts[i], job)
+        await asyncio.gather(*(one(i, spk, t) for i, (spk, t) in enumerate(turns)))
+
+    try:
+        asyncio.run(_all())
+        # Re-encode through one filter graph so both voices land in the same
+        # format, with a short pause between turns.
+        inputs, labels = [], []
+        for i, part in enumerate(parts):
+            inputs += ["-i", part]
+            # edge-tts pads each clip with ~0.5s of silence; trim both ends so
+            # every turn change gets the same short gap.
+            labels.append(f"[{i}:a]aresample=24000,aformat=channel_layouts=mono,"
+                          f"{_TRIM_SILENCE},areverse,{_TRIM_SILENCE},areverse,"
+                          f"apad=pad_dur={_DIALOGUE_GAP}[t{i}]")
+        graph = ";".join(labels) + ";" + "".join(f"[t{i}]" for i in range(len(parts))) \
+            + f"concat=n={len(parts)}:v=0:a=1[out]"
+        r = subprocess.run(
+            ["ffmpeg", "-y", *inputs, "-filter_complex", graph, "-map", "[out]",
+             "-c:a", "libmp3lame", "-b:a", "96k", audio_path],
+            capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"Dialogue join: {r.stderr[-400:]}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    print(f"  [ytprod] dialogue TTS done: {len(turns)} turns, "
+          f"{os.path.getsize(audio_path):,} bytes", flush=True)
 
 
 def _job_dir(job_id: str) -> str:
@@ -430,6 +534,7 @@ def _hydrate_job(job_id: str):
         "clip_prefill": data.get("clip_prefill"),
         "voice_rate": data.get("voice_rate") or "+0%",
         "voice_pitch": data.get("voice_pitch") or "+0Hz",
+        "voice_b": data.get("voice_b"),
         "viz_style": data.get("viz_style") or "none",
         "viz_placement": data.get("viz_placement") or "full",
         "viz_opacity": data.get("viz_opacity", 0.9),
@@ -1073,20 +1178,7 @@ SCRIPT:
                   flush=True)
         else:
             push({"phase": "audio", "msg": "Generating audio narration…"})
-            if not _EDGE_TTS:
-                raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
-
-            async def _tts():
-                communicate = edge_tts.Communicate(
-                    script, voice, receive_timeout=300, **_tts_prosody(job))
-                with open(audio_path, "wb") as af:
-                    async for chunk in communicate.stream():
-                        if chunk.get("type") == "audio":
-                            af.write(chunk["data"])
-                size = os.path.getsize(audio_path)
-                print(f"  [ytprod] TTS done: {size:,} bytes", flush=True)
-
-            asyncio.run(_tts())
+            _synthesize_narration(job, script, voice, audio_path, push)
         job["audio_path"] = audio_path
 
         # Step 3: Rescale timings to actual audio duration
@@ -1167,22 +1259,8 @@ def run_generation_from_sections(job_id: str, sections_text: list, script_for_tt
         # joined script as ONE continuous file; sections are time-boundaries
         # within it, not separate TTS calls (matches existing behavior exactly).
         push({"phase": "audio", "msg": "Generating audio narration…"})
-        if not _EDGE_TTS:
-            raise RuntimeError("edge-tts not installed — run: pip install edge-tts")
-
         audio_path = os.path.join(job_dir, "narration.mp3")
-
-        async def _tts():
-            communicate = edge_tts.Communicate(
-                script_for_tts, voice, receive_timeout=300, **_tts_prosody(job))
-            with open(audio_path, "wb") as af:
-                async for chunk in communicate.stream():
-                    if chunk.get("type") == "audio":
-                        af.write(chunk["data"])
-            size = os.path.getsize(audio_path)
-            print(f"  [ytprod] TTS done: {size:,} bytes", flush=True)
-
-        asyncio.run(_tts())
+        _synthesize_narration(job, script_for_tts, voice, audio_path, push)
         job["audio_path"] = audio_path
 
         # Step 3: rescale — identical to run_generation's Step 3.
@@ -1580,6 +1658,7 @@ def generate():
         "queue": queue.Queue(),
         "script": script,
         "voice": voice,
+        "voice_b": _clean_voice(data.get("voice_b")),
         **_clean_prosody(data.get("rate"), data.get("pitch")),
         "sections": [],
         "audio_path": None,
@@ -1592,7 +1671,7 @@ def generate():
 
 
 def _start_generation_from_sections(sections_text, voice, title, description, hashtags,
-                                    rate=None, pitch=None):
+                                    rate=None, pitch=None, voice_b=None):
     """Create a job and spawn run_generation_from_sections. Callable directly
     in-process (no Flask request context needed — the platform's producer_scout
     blueprint calls this straight from sys.modules, same pattern as the
@@ -1612,6 +1691,7 @@ def _start_generation_from_sections(sections_text, voice, title, description, ha
         "queue": queue.Queue(),
         "script": script_for_tts,
         "voice": voice,
+        "voice_b": _clean_voice(voice_b),
         **_clean_prosody(rate, pitch),
         "sections": [],
         "audio_path": None,
@@ -1638,6 +1718,7 @@ def generate_from_sections():
             hashtags=data.get("hashtags", []),
             rate=data.get("rate"),
             pitch=data.get("pitch"),
+            voice_b=data.get("voice_b"),
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -1709,6 +1790,7 @@ def job_state(job_id):
         "music_vol": job.get("music_vol", 0.15),
         "voice_rate": job.get("voice_rate", "+0%"),
         "voice_pitch": job.get("voice_pitch", "+0Hz"),
+        "voice_b": job.get("voice_b"),
         "viz_style": job.get("viz_style", "none"),
         "viz_placement": job.get("viz_placement", "full"),
         "viz_opacity": job.get("viz_opacity", 0.9),
@@ -2365,6 +2447,11 @@ video{width:100%;border-radius:8px;background:#000;display:block}
 .voice-play:hover{color:var(--amber);border-color:var(--amber)}
 .voice-play.busy{opacity:.5;cursor:wait}
 
+.dialogue-hint{display:none;font-size:10px;color:var(--faint);margin-top:5px;line-height:1.55}
+.dialogue-hint.show{display:block}
+.dialogue-hint code{display:block;font-family:monospace;color:var(--muted)}
+.dialogue-hint code+code{margin-bottom:3px}
+
 /* ── visualizer ── */
 .viz-zone{margin-bottom:8px}
 .viz-head{font-size:11px;color:var(--muted);margin-bottom:5px}
@@ -2516,6 +2603,21 @@ video{width:100%;border-radius:8px;background:#000;display:block}
           <option value="18">18 sections</option>
           <option value="20">20 sections</option>
         </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Second voice · dialogue</label>
+      <div class="voice-pick">
+        <select id="voiceB">
+          <option value="">Off — single narrator</option>
+        </select>
+        <button type="button" class="voice-play" id="voicePlayB" title="Preview the second voice">&#9654;</button>
+      </div>
+      <div class="dialogue-hint" id="dialogueHint">
+        Label each turn in the script: the first speaker gets the main voice, the second gets this one.
+        <code>A: Welcome back to the show.</code>
+        <code>B: Glad to be here.</code>
+        Names work too (<code>Tunde:</code> / <code>Sarah:</code>). Lines without a label continue the last speaker.
       </div>
     </div>
     <div class="row2">
@@ -2823,6 +2925,11 @@ function restoreFormFromJob(d) {
     const el = $(id);
     if (val && [...el.options].some(o => o.value === val)) el.value = val;
   }
+  if (d.voice_b) {
+    const vb = $('voiceB');
+    if ([...vb.options].some(o => o.value === d.voice_b)) vb.value = d.voice_b;
+    $('dialogueHint').classList.toggle('show', !!vb.value);
+  }
   if (d.viz_style) setVizStyle(d.viz_style);
   if (d.viz_opacity != null) {
     $('vizOpacity').value = Math.round(Number(d.viz_opacity) * 100);
@@ -2879,6 +2986,7 @@ $('genBtn').addEventListener('click', async () => {
       body: JSON.stringify({
         script,
         voice:    $('voice').value,
+        voice_b:  $('voiceB').value,
         rate:     $('voiceRate').value,
         pitch:    $('voicePitch').value,
         title:    $('vidTitle').value.trim(),
@@ -3468,9 +3576,15 @@ document.querySelectorAll('#vizStyles .viz-chip').forEach(b =>
   b.addEventListener('click', () => setVizStyle(b.dataset.style)));
 
 // ── voice preview ────────────────────────────────────────────────────
+// Second-voice menu mirrors the main one rather than duplicating 50 options.
+[...$('voice').children].forEach(g => $('voiceB').appendChild(g.cloneNode(true)));
+$('voiceB').value = '';
+$('voiceB').addEventListener('change', () =>
+  $('dialogueHint').classList.toggle('show', !!$('voiceB').value));
+
 let _previewAudio = null;
-$('voicePlay').addEventListener('click', async () => {
-  const btn = $('voicePlay');
+async function previewVoice(btn, voice) {
+  if (!voice) { alert('Pick a second voice first.'); return; }
   if (btn.classList.contains('busy')) return;
   if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
   btn.classList.add('busy');
@@ -3479,7 +3593,7 @@ $('voicePlay').addEventListener('click', async () => {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        voice: $('voice').value,
+        voice: voice,
         rate:  $('voiceRate').value,
         pitch: $('voicePitch').value,
       }),
@@ -3498,7 +3612,9 @@ $('voicePlay').addEventListener('click', async () => {
   } finally {
     btn.classList.remove('busy');
   }
-});
+}
+$('voicePlay').addEventListener('click', e => previewVoice(e.currentTarget, $('voice').value));
+$('voicePlayB').addEventListener('click', e => previewVoice(e.currentTarget, $('voiceB').value));
 
 $('assembleBtn').addEventListener('click', async () => {
   if (!_jobId) return;
