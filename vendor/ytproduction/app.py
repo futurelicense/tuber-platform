@@ -1342,10 +1342,11 @@ def _ffmpeg_concat(seg_paths: list, job_dir: str, out_path: str):
 
 
 # ─── audio visualizer ────────────────────────────────────────────────
-# Audio-reactive glow layer rendered from the final mix and screen-blended
-# over the assembled video. Screen over black is a no-op, so the layer only
+# Audio-reactive glow layer rendered from the final mix and alpha-overlaid
+# on the assembled video. The wave itself is the alpha mask, so the layer only
 # lights up where the wave is; sections without media fall back to black so
-# the visualizer becomes their whole background.
+# the visualizer becomes their whole background. Overlaying in yuv420 is about
+# half the CPU of a full-frame gbrp screen blend, which matters on a 1-CPU host.
 VIZ_STYLES     = ("none", "neon", "bars", "aurora")
 VIZ_PLACEMENTS = ("full", "band")
 _VIZ_W, _VIZ_H = 960, 540          # rendered small, upscaled — glow hides it
@@ -1394,9 +1395,11 @@ def _viz_carrier_waves(src: str, carriers: list, tag: str, height: int) -> list:
     return parts
 
 
-def _viz_filter(style: str, placement: str, out_w: int = 1920, out_h: int = 1080) -> str:
-    """Filter chains that read [vizin] (audio) and emit [vizout], an RGB
-    layer of out_w×out_h on black, ready to screen-blend over the video."""
+def _viz_filter(style: str, placement: str, opacity: float = 1.0,
+                out_w: int = 1920, out_h: int = 1080) -> str:
+    """Filter chains that read [vizin] (audio) and emit [vizout], a yuva420p
+    layer (out_w×out_h, or out_w×out_h/3 for the band) to overlay at the
+    bottom of the video."""
     W, H = _VIZ_W, _VIZ_H
     parts = []
     if style == "neon":
@@ -1443,16 +1446,13 @@ def _viz_filter(style: str, placement: str, out_w: int = 1920, out_h: int = 1080
         parts.append("[vm][vgl]blend=all_mode=screen[vmask]")
         parts.append(_viz_gradient([(210, 75, 255), (47, 123, 255), (210, 75, 255)], True, "[vgrad]"))
 
-    if placement == "band":
-        band_h = out_h // 3
-        place = (f"scale={out_w}:{band_h}:flags=bicubic,"
-                 f"pad={out_w}:{out_h}:0:{out_h - band_h}")
-    else:
-        place = f"scale={out_w}:{out_h}:flags=bicubic"
-    parts.append("[vmask]format=gray[vmg]")
-    parts.append("[vgrad][vmg]alphamerge[vcol]")
-    parts.append(f"color=c=black:s={W}x{H}:r=25[vbg]")
-    parts.append(f"[vbg][vcol]overlay=shortest=1,{place},format=gbrp[vizout]")
+    band_h = out_h // 3 if placement == "band" else out_h
+    # Opacity scales the mask while it is still small — far cheaper than
+    # fading the upscaled 1080p layer.
+    parts.append(f"[vmask]format=gray,lutyuv=y=val*{opacity:.2f}[vmg]")
+    # alphamerge ends when the finite mask does, which stops the looped gradient.
+    parts.append(f"[vgrad][vmg]alphamerge,format=yuva420p,"
+                 f"scale={out_w}:{band_h}:flags=bilinear[vizout]")
     return ";".join(parts)
 
 
@@ -1460,20 +1460,22 @@ def _merge_with_visualizer(video: str, audio: str, out_path: str,
                            style: str, placement: str, opacity: float,
                            total_dur: float = 0.0, on_progress=None):
     """Final merge that also renders the visualizer from the mixed audio.
-    It re-encodes the whole video (~realtime), so report percent as it goes."""
+    It re-encodes the whole video (a few × realtime on one CPU), so report
+    percent as it goes."""
     graph = (
         "[1:a]asplit=2[aout][vizin];"
-        + _viz_filter(style, placement) + ";"
-        + "[0:v]scale=1920:1080,setsar=1,format=gbrp[base];"
-        + f"[base][vizout]blend=all_mode=screen:all_opacity={opacity:.2f},"
-          "format=yuv420p[vout]"
+        + _viz_filter(style, placement, opacity) + ";"
+        + "[0:v]scale=1920:1080,setsar=1,format=yuv420p[base];"
+        + "[base][vizout]overlay=x=0:y=main_h-overlay_h:format=yuv420:shortest=1[vout]"
     )
     proc = subprocess.Popen([
         "ffmpeg", "-y", "-nostats", "-progress", "pipe:1",
         "-i", video, "-i", audio,
         "-filter_complex", graph,
         "-map", "[vout]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+        # superfast: ~25% less CPU than veryfast for a slightly bigger file —
+        # this re-encode is the slowest step of a visualizer assembly.
+        "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest", "-movflags", "+faststart", out_path,
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
