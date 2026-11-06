@@ -5,8 +5,12 @@ without ffmpeg, Groq, or a running server.
 """
 import importlib.util
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("YTPROD_OUTPUT_DIR", "/tmp/ytprod-test-output")
 
@@ -116,6 +120,51 @@ class DialogueParseTests(unittest.TestCase):
     def test_bad_second_voice_is_dropped(self):
         self.assertIsNone(ytprod._clean_voice("en-US-Guy; rm -rf"))
         self.assertEqual(ytprod._clean_voice("en-NG-EzinneNeural"), "en-NG-EzinneNeural")
+
+
+@unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+class CrossfadeConcatTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.durs = [2.0, 1.4, 3.08, 2.2, 1.6]
+        self.segs = []
+        for i, d in enumerate(self.durs):
+            path = os.path.join(self.dir, f"seg_{i}.mp4")
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", f"color=c=0x{i * 40:02x}2040:s=64x36:r=25", "-t", str(d),
+                 "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", path],
+                check=True)
+            self.segs.append(path)
+
+    def _frames(self, path):
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v",
+             "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path],
+            capture_output=True, text=True, check=True).stdout
+        return int(out.strip().strip(","))
+
+    def test_timeline_does_not_drift_and_each_ffmpeg_opens_two_segments_at_most(self):
+        out = os.path.join(self.dir, "merged.mp4")
+        real_run = subprocess.run
+        input_counts = []
+
+        def spy(cmd, *a, **k):
+            input_counts.append(cmd.count("-i"))
+            return real_run(cmd, *a, **k)
+
+        with mock.patch.object(ytprod.subprocess, "run", side_effect=spy):
+            ytprod._ffmpeg_xfade_concat(self.segs, self.durs, out, 0.5)
+        expected = (sum(self.durs) - 4 * 0.5) * 25
+        self.assertLessEqual(abs(self._frames(out) - expected), 1)
+        self.assertLessEqual(max(input_counts), 2)
+        self.assertFalse(os.path.exists(out + ".parts"))
+
+    def test_segment_too_short_for_the_fade_raises_so_assembly_can_fall_back(self):
+        out = os.path.join(self.dir, "merged.mp4")
+        with self.assertRaises(RuntimeError):
+            ytprod._ffmpeg_xfade_concat(self.segs[:2], [0.2, 1.4], out, 0.5)
 
 
 if __name__ == "__main__":

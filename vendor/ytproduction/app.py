@@ -43,6 +43,14 @@ OUTPUT_DIR = os.environ.get("YTPROD_OUTPUT_DIR") or os.path.join(APP_DIR, "outpu
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 print(f"  [ytprod] OUTPUT_DIR={OUTPUT_DIR}", flush=True)
 
+# ffmpeg sizes its thread pools from the host's core count, not the instance's
+# share of it, and every decoder/encoder thread buffers its own 1080p frames.
+# One thread halves peak memory and costs nothing on a 1-CPU instance.
+_FF_THREADS = str(int(os.environ.get("YTPROD_FFMPEG_THREADS") or 1))
+_FF_GLOBAL  = ["-filter_threads", _FF_THREADS, "-filter_complex_threads", _FF_THREADS]
+_FF_THREAD  = ["-threads", _FF_THREADS]   # before -i: decoder; before output: encoder
+_FF_PRESET  = "superfast"                 # shorter lookahead: ~100 MB less than "fast"
+
 _AI_ENDPOINT = os.environ.get("AI_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
 _DEFAULT_AI_MODEL = "openai/gpt-oss-120b"
 # Groq free/developer keys no longer serve these — they 404 model_not_found
@@ -917,18 +925,18 @@ def _make_segment(media_path: str, duration: float, out_path: str, is_image: boo
     vf = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
     if is_image:
         cmd = [
-            "ffmpeg", "-y", "-loop", "1", "-t", str(duration),
+            "ffmpeg", "-y", *_FF_GLOBAL, *_FF_THREAD, "-loop", "1", "-t", str(duration),
             "-i", media_path,
             "-vf", vf, "-r", "25",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+            *_FF_THREAD, "-c:v", "libx264", "-preset", _FF_PRESET, "-crf", "23", "-pix_fmt", "yuv420p",
             out_path,
         ]
     else:
         cmd = [
-            "ffmpeg", "-y", "-t", str(duration),
+            "ffmpeg", "-y", *_FF_GLOBAL, *_FF_THREAD, "-t", str(duration),
             "-i", media_path,
             "-vf", vf, "-r", "25",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+            *_FF_THREAD, "-c:v", "libx264", "-preset", _FF_PRESET, "-crf", "23", "-pix_fmt", "yuv420p",
             "-an", out_path,
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -939,11 +947,11 @@ def _make_placeholder(duration: float, idx: int, out_path: str, black: bool = Fa
     colours = ["0x1a1a2e","0x16213e","0x0f3460","0x533483","0x2c2c54","0x1a3a4a","0x2d1b2e","0x1b2d2e"]
     c = "black" if black else colours[idx % len(colours)]
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", *_FF_GLOBAL,
         "-f", "lavfi", "-i", f"color=c={c}:size=1920x1080:rate=25",
         "-t", str(duration),
         "-vf", "setsar=1",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+        *_FF_THREAD, "-c:v", "libx264", "-preset", _FF_PRESET, "-crf", "23", "-pix_fmt", "yuv420p",
         out_path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -967,35 +975,54 @@ def _video_duration(path: str) -> float:
     return 0.0
 
 def _ffmpeg_xfade_concat(seg_paths: list, seg_durations: list, out_path: str, xfade_dur: float = 0.5):
-    """Concat video segments with smooth crossfade transitions."""
+    """Concat video segments with smooth crossfade transitions.
+
+    Opening every segment in one ffmpeg costs ~55 MB per segment (1 GB at 12),
+    so render one part at a time: a segment's body plus its fade into the next,
+    two inputs at most, then join the parts without re-encoding.
+    """
     if len(seg_paths) == 1:
         shutil.copy(seg_paths[0], out_path)
         return
-    inputs = []
-    for p in seg_paths:
-        inputs += ["-i", p]
-    parts = []
-    prev_label = "[0:v]"
-    cumulative = seg_durations[0]
-    for i in range(1, len(seg_paths)):
-        offset = max(0.01, cumulative - i * xfade_dur)
-        out_label = "[vout]" if i == len(seg_paths) - 1 else f"[v{i}]"
-        parts.append(
-            f"{prev_label}[{i}:v]xfade=transition=fade"
-            f":duration={xfade_dur:.2f}:offset={offset:.3f}{out_label}"
-        )
-        prev_label = out_label
-        cumulative += seg_durations[i]
-    cmd = [
-        "ffmpeg", "-y", *inputs,
-        "-filter_complex", ";".join(parts),
-        "-map", "[vout]",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-r", "25", out_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg xfade: {result.stderr[-500:]}")
+    fps = 25
+    fade = max(1, round(xfade_dur * fps))
+    # Cut on the exact timeline so rounding each fade to whole frames can't
+    # add up and drift the visuals away from the narration.
+    ends, total = [], 0.0
+    for i, d in enumerate(seg_durations):
+        total += d - (xfade_dur if i else 0.0)
+        ends.append(round(total * fps))
+    work = os.path.abspath(out_path) + ".parts"
+    os.makedirs(work, exist_ok=True)
+    enc = [*_FF_THREAD, "-c:v", "libx264", "-preset", _FF_PRESET, "-crf", "23",
+           "-pix_fmt", "yuv420p", "-r", str(fps)]
+    try:
+        parts = []
+        for i, path in enumerate(seg_paths):
+            skip = fade if i else 0   # already shown as the fade into this segment
+            part = os.path.join(work, f"part_{i:03d}.mp4")
+            length = ends[i] - (ends[i - 1] if i else 0)
+            cmd = ["ffmpeg", "-y", *_FF_GLOBAL, *_FF_THREAD, "-i", path]
+            body = f"[0:v]trim=start_frame={skip},setpts=PTS-STARTPTS"
+            if i < len(seg_paths) - 1:
+                offset = length - fade
+                if offset < 1:
+                    raise RuntimeError(f"segment {i} is too short for a {xfade_dur}s fade")
+                cmd += [*_FF_THREAD, "-i", seg_paths[i + 1]]
+                graph = (f"{body}[a];[1:v]trim=end_frame={fade},setpts=PTS-STARTPTS[b];"
+                         f"[a][b]xfade=transition=fade:duration={fade / fps:.3f}"
+                         f":offset={offset / fps:.3f}[vout]")
+                cmd += ["-frames:v", str(length)]
+            else:
+                graph = f"{body}[vout]"
+            cmd += ["-filter_complex", graph, "-map", "[vout]", *enc, part]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg xfade: {result.stderr[-500:]}")
+            parts.append(part)
+        _ffmpeg_concat(parts, work, out_path)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 def _build_thumbnail(src_path: str, title: str, out_path: str, is_video: bool = False):
     """Build a 1280×720 thumbnail with title overlay."""
@@ -1469,13 +1496,13 @@ def _merge_with_visualizer(video: str, audio: str, out_path: str,
         + "[base][vizout]overlay=x=0:y=main_h-overlay_h:format=yuv420:shortest=1[vout]"
     )
     proc = subprocess.Popen([
-        "ffmpeg", "-y", "-nostats", "-progress", "pipe:1",
-        "-i", video, "-i", audio,
+        "ffmpeg", "-y", *_FF_GLOBAL, "-nostats", "-progress", "pipe:1",
+        *_FF_THREAD, "-i", video, "-i", audio,
         "-filter_complex", graph,
         "-map", "[vout]", "-map", "[aout]",
         # superfast: ~25% less CPU than veryfast for a slightly bigger file —
         # this re-encode is the slowest step of a visualizer assembly.
-        "-c:v", "libx264", "-preset", "superfast", "-crf", "23",
+        *_FF_THREAD, "-c:v", "libx264", "-preset", _FF_PRESET, "-crf", "23",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest", "-movflags", "+faststart", out_path,
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -1586,7 +1613,7 @@ def run_assembly(job_id: str):
         video_path = os.path.join(job_dir, "video.mp4")
         if viz_style != "none":
             push({"phase": "visualizer",
-                  "msg": "Rendering audio visualizer — about as long as the video…"})
+                  "msg": "Rendering audio visualizer — this is the slowest step…"})
             _merge_with_visualizer(
                 merged, final_audio, video_path, viz_style,
                 job.get("viz_placement", "full"), float(job.get("viz_opacity", 0.9)),
